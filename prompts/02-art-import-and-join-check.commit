@@ -1,0 +1,3 @@
+feature(art): turn clips into frame sequences and check every join
+
+art:import normalises each clip, writes the 1440 and 768 WebP tiers, manifests and posters inside a size budget; art:check compares each clip end with the next clip start and reports which join type fits.

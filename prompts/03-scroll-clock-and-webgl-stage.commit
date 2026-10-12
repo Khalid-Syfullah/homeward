@@ -1,0 +1,3 @@
+feature(stage): smoothed scroll clock, frame store and WebGL compositor
+
+A critically damped scroll clock, a nearest-first frame store with lookahead and LRU eviction, and a raw WebGL 1 compositor that blends the two frames either side of the fractional index. Dev HUD and frozen-progress URL included.

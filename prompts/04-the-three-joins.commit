@@ -1,0 +1,3 @@
+feature(joins): push, portal and rect transitions
+
+Three 12-frame joins as pure functions of their own time: a zoom-blur dissolve, a circular reveal from the pupil anchor and a growing photograph rectangle. Each is exactly zero outside its window; reduced motion uses a plain cross-dissolve.

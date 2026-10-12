@@ -1,0 +1,3 @@
+chore(setup): scaffold the Homeward app, the story map and placeholder frames
+
+Next.js app with the ten-chapter story map in src/content/story.ts, design tokens, the tall scroll shell and generated placeholder frames, so every later phase runs without any real art.

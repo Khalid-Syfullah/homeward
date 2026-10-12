@@ -1,0 +1,3 @@
+chore(release): phones, performance budget, Playwright tests and production build
+
+Per-chapter phone focal points, the 768 tier and a lower pixel-ratio cap, docs/PERF.md with the measured budget, scrub and join tests, and a production build.

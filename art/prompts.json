@@ -1,0 +1,381 @@
+{
+  "project": "homeward",
+  "about": "Single source of truth for every Homeward asset prompt. Edit here, then run: node tools/art.mjs docs",
+  "blocks": {
+    "STYLE": "Cinematic photoreal frame, large-format digital cinema look, very fine 35mm grain, soft lens falloff at the edges. Low golden-hour sun from frame left, warm key light with a cool soft fill, gentle atmospheric haze. Rich deep greens and warm earth tones (teak, terracotta, brass, saffron), a lightly painterly colour grade, high dynamic range with detail kept in the shadows. Centre-weighted composition that survives a vertical 9:16 crop. No text, no captions, no watermark, no logo.",
+    "WALKER": "a man in his mid-30s, lean, short black hair with a little grey at the temples, short trimmed beard, warm brown skin, dark-brown eyes with a clear amber ring around the pupil, wearing an undyed linen shirt with rolled sleeves, charcoal cotton trousers and brown leather sandals, with a faded indigo cloth bag on his right shoulder",
+    "REGION": "Hill-country village architecture: whitewashed clay walls, heavy carved teak doors and pillars, a deep timber veranda, terracotta tile roof with wide eaves, handwoven wool and cotton rugs, brass lamps, clay pots, woven baskets. Replace this paragraph with your own region and every prompt follows.",
+    "NEGATIVE": "text, letters, captions, subtitles, watermark, logo, extra fingers, deformed hands, distorted or cross-eyed eyes, duplicated limbs, face morphing, background morphing, jump cut, flicker, cartoon, plastic skin, oversaturated, HDR halos, lens-flare blobs, cars, power lines, modern objects"
+  },
+  "settings": {
+    "imageAspect": "16:9",
+    "imageSize": "3840x2160",
+    "imageMinSize": "1920x1080",
+    "variantsPerFrame": 4,
+    "video": {
+      "fps": 24,
+      "resolution": "1080p",
+      "takesPerClip": 3,
+      "veoSeconds": 8
+    }
+  },
+  "layout": {
+    "refs": "art/source/refs",
+    "keyframes": "art/source/keyframes",
+    "clips": "art/source/clips",
+    "overlays": "art/source/overlays",
+    "audio": "art/source/audio"
+  },
+  "refs": [
+    {
+      "id": "A0",
+      "title": "The man (reference sheet)",
+      "attach": [],
+      "prompt": "{STYLE} Character reference sheet of {WALKER}. Three views on a plain warm-grey studio backdrop in soft even light: a full-body back view, a full-body three-quarter front view, and a tight face portrait looking slightly off-camera with the eyes sharp and the amber ring clearly visible. Same clothes and bag in every view.",
+      "note": "Every frame with the man uses this."
+    },
+    {
+      "id": "A1",
+      "title": "The house, outside (reference)",
+      "attach": [],
+      "prompt": "{STYLE} {REGION} A large, beautiful two-storey village house standing alone on a green hillside, whitewashed clay and timber, deep carved-teak veranda, wide terracotta roof, heavy open double doors of carved teak at the exact centre of the facade, a brass lamp hanging by the door, clay pots with flowering plants on the steps, a dirt path leading up to the door. Three views on one sheet: wide, three-quarter, and a straight-on close view of the open doors."
+    },
+    {
+      "id": "A2",
+      "title": "The house, inside (reference)",
+      "attach": [],
+      "prompt": "{STYLE} {REGION} Wide establishing view of the house interior: carved wooden pillars, a handwoven rug on a polished plank floor, hanging brass lamps, clay pots, woven baskets, an embroidered textile on the wall, low wooden benches, shafts of golden light with floating dust from a side window, and at the far end a floor-to-ceiling teak library wall holding hundreds of old leather-bound books. Calm and lived-in, no people."
+    }
+  ],
+  "keyframes": [
+    {
+      "id": "K01",
+      "title": "The road, from behind (opens c01)",
+      "attach": [
+        "A0"
+      ],
+      "prompt": "{STYLE} Seen from behind: {WALKER}, walking away from the camera along a narrow dirt road that curves through green rolling countryside. Camera at shoulder height about four metres behind him. Low sun from the left throws his long shadow ahead and lights drifting dust. Wildflowers along the verge, misty hills in the distance. Medium wide shot, the man in the centre third."
+    },
+    {
+      "id": "K02",
+      "title": "Mid-arc (optional middle frame of c01)",
+      "attach": [
+        "A0",
+        "K01"
+      ],
+      "prompt": "{STYLE} The same road and the same man, now photographed from his front-left side as he walks, a little closer than in the previous frame, head turned slightly toward the horizon, rim light on his hair and shoulder, the road and hills softly out of focus behind. Medium shot, the man in the centre third.",
+      "optional": true,
+      "follows": "K01"
+    },
+    {
+      "id": "K03",
+      "title": "The face (closes c01, opens c02)",
+      "attach": [
+        "A0",
+        "K02"
+      ],
+      "prompt": "{STYLE} Medium close-up of {WALKER}, chest up, looking just past the camera toward the horizon, calm and quietly curious. Golden rim light on his hair, shallow depth of field, the road and green hills melting into soft blur behind. Natural skin texture, eyes razor sharp with the amber ring visible, face in the centre third."
+    },
+    {
+      "id": "K04",
+      "title": "The eye (closes c02)",
+      "attach": [
+        "A0",
+        "K03"
+      ],
+      "prompt": "{STYLE} Extreme macro of the man's left eye filling the frame: dark-brown iris with a clear amber ring and fine radial fibres, a sharp round black pupil placed at the exact centre of the image, upper lashes, a little skin texture at the edges. The cornea holds a tiny sharp reflection of a bright green valley with a single house on a hill. Shallow depth of field, soft golden light from the left.",
+      "note": "The pupil must sit at the exact centre: the portal join opens from this point."
+    },
+    {
+      "id": "K05",
+      "title": "The valley (closes c03, opens c04)",
+      "attach": [
+        "A1"
+      ],
+      "prompt": "{STYLE} Breathtaking wide aerial view of a vast green valley at golden hour: terraced fields, a winding silver river, forested ridges fading into blue haze, low mist drifting between the hills, long cloud shadows. A single beautiful timber-and-clay house with a terracotta roof stands small in the exact centre of the frame on a grassy rise, about one sixtieth of the frame width. Immense scale, extremely detailed."
+    },
+    {
+      "id": "K06",
+      "title": "The open door (closes c04, opens c05)",
+      "attach": [
+        "A1"
+      ],
+      "prompt": "{STYLE} {REGION} Straight-on view of the house's open carved-teak double doors from the foot of the veranda steps, three metres away, the doorway in the exact centre of the frame. Warm golden light spills from inside across the stone threshold, with a glimpse of a rug and brass lamps within. A brass lamp hangs by the door, clay pots on the steps, green hillside around."
+    },
+    {
+      "id": "K07",
+      "title": "The book on the shelf (closes c05, opens c06)",
+      "attach": [
+        "A2"
+      ],
+      "prompt": "{STYLE} {REGION} Close view of a tall teak bookshelf inside the house: rows of old leather-bound spines with gold decoration but no legible words. A shaft of golden light from a side window with floating dust. One book in the centre of the frame is pulled out a few centimetres: deep valley-green cloth cover with a small brass-gold embossed emblem of a circle containing a mountain and a river. Shallow depth of field."
+    },
+    {
+      "id": "K08",
+      "title": "The monument page (closes c06, opens c07)",
+      "attach": [
+        "K07",
+        "A2"
+      ],
+      "prompt": "{STYLE} {REGION} The same green book lying open on a polished teak reading desk beside a window, seen from above at a slight angle. Left page: dense typeset columns and small marginal notes in an unreadable serif script. Right page: one large photograph in a thin border showing a graceful white-stone monument pavilion with a central dome and four slender towers on a raised plinth, reflected in a still pool, with a caption block of fine print under it. Aged cream paper, warm light, soft page shadows. The photograph sits in the centre of the frame."
+    },
+    {
+      "id": "K09",
+      "title": "The sea photograph (closes c07, opens c08)",
+      "attach": [
+        "K08"
+      ],
+      "prompt": "{STYLE} The same open book from the same angle, now a double-page spread with one large full-width photograph of a beautiful sea: turquoise water, gentle waves with white foam, a low golden sun near the horizon, a few soft clouds, the horizon at one third of the photograph's height. Thin cream border, a narrow strip of fine print beneath. The photograph is centred and covers about 60 percent of the frame width."
+    },
+    {
+      "id": "K10",
+      "title": "The sea, real (closes c08, opens c09)",
+      "attach": [
+        "K09"
+      ],
+      "prompt": "{STYLE} The same sea, now real and filling the whole frame: a low camera just above gently moving water, small waves glinting in the low sun on the left, foam lines, a faint curved coastline far away on the right. The horizon is at the same height as in the photograph in the previous frame and the sun is in the same place. No paper, no border, no text."
+    },
+    {
+      "id": "K11",
+      "title": "The shore (closes c09, opens c10)",
+      "attach": [
+        "K10"
+      ],
+      "prompt": "{STYLE} The shallow edge of the same sea at a wide golden beach, camera just above the foam: a family with two children wading, an elderly fisherman pulling a wooden boat, young women carrying baskets along the waterline, children splashing. Candid and unhurried, people small and softly lit, no faces in close-up. Low sun from the left, clear shallow water in the foreground."
+    },
+    {
+      "id": "K12",
+      "title": "The sky (closes c10)",
+      "attach": [
+        "K11"
+      ],
+      "prompt": "{STYLE} A vast, serene sky seen with the camera tilted fully upward: soft blue deepening toward the top, a few high feathered clouds lit gold from the left, a warm glow at the bottom edge of the frame, three or four tiny birds very high. Nothing else in the frame.",
+      "attachNote": "K11 for light only"
+    }
+  ],
+  "clips": [
+    {
+      "id": "c01-follow",
+      "seconds": 8,
+      "from": "K01",
+      "to": "K03",
+      "refs": [
+        "A0"
+      ],
+      "prompt": "{STYLE} One continuous tracking shot. The camera follows the man from behind at shoulder height as he walks at an unhurried pace along the dirt road. It slowly closes the distance, then arcs left around his shoulder, passing his profile, and ends in a medium close-up of his face as he looks toward the horizon. He keeps walking naturally: arms swinging, bag swaying, dust in the low sunlight, hills drifting past with gentle parallax. Constant, gentle camera speed. No cuts."
+    },
+    {
+      "id": "c02-eye",
+      "seconds": 5,
+      "from": "K03",
+      "to": "K04",
+      "refs": [
+        "A0"
+      ],
+      "prompt": "{STYLE} One continuous slow dolly straight toward his eye. He blinks once, naturally, at the midpoint. The camera moves from the face to an extreme macro of the eye, focus gliding from the lashes to the iris; the amber ring and the green valley reflected in the cornea sharpen as we arrive. The pupil ends exactly at the centre of the frame. The face stays calm and the eye keeps its shape. No cuts."
+    },
+    {
+      "id": "c03-portal",
+      "seconds": 6,
+      "from": "K04",
+      "to": "K05",
+      "refs": [
+        "A1"
+      ],
+      "prompt": "{STYLE} Continue pushing into the pupil. The black of the pupil grows until it fills the frame, then light blooms from its centre and soft white mist rushes outward and parts, revealing a vast green valley seen from high above. The camera pulls up and back and comes to rest on a wide aerial view with a single small house at the exact centre. One continuous move. No cuts.",
+      "optional": true,
+      "note": "Skip this clip unless your first take is good. The portal join in the site is more reliable than any video model for this hand-off."
+    },
+    {
+      "id": "c04-descent",
+      "seconds": 10,
+      "from": "K05",
+      "to": "K06",
+      "refs": [
+        "A1"
+      ],
+      "prompt": "{STYLE} One long, steady zoom. The camera descends from far above the valley and flies forward over terraced fields, a silver river, treetops and a grassy path, closing relentlessly on the house, which stays in the exact centre of the frame the whole time. The house grows steadily; haze clears as we approach; cloud shadows drift over the fields; a few birds cross. The camera slows and settles on the veranda steps in front of the open carved doors. Forward motion only, no panning, no cuts."
+    },
+    {
+      "id": "c05-enter",
+      "seconds": 8,
+      "from": "K06",
+      "to": "K07",
+      "refs": [
+        "A2"
+      ],
+      "prompt": "{STYLE} {REGION} One smooth dolly at chest height. The camera glides forward through the open double doors into the warm interior. Carved wooden pillars pass on both sides, hanging brass lamps sway very slightly, dust motes drift in shafts of golden light, rugs on the floor. The camera turns gently to the right toward the tall teak library wall and ends in a close view of one green book pulled slightly out from the shelf. No people. No cuts."
+    },
+    {
+      "id": "c06-book",
+      "seconds": 6,
+      "from": "K07",
+      "to": "K08",
+      "refs": [
+        "A2"
+      ],
+      "prompt": "{STYLE} {REGION} A hand and forearm in a plain linen sleeve (no face, nothing else of the person) slides the green book from the shelf. The camera follows the book as it is carried a few steps and laid on a teak reading desk beside the window, then cranes up and over to a top-down angle as the cover opens and the pages fall open to a double-page spread with a monument photograph on the right. Continuous camera move, no cuts."
+    },
+    {
+      "id": "c07-pages",
+      "seconds": 8,
+      "from": "K08",
+      "to": "K09",
+      "refs": [],
+      "prompt": "{STYLE} Top-down view of the open book on the desk. The pages turn one after another, fast at first and then slowing, as if lifted by a gentle breeze. Each page shows dense columns of text, engraved maps, small drawings and photographs. The camera hovers at the same angle with a very slow drift inward. The last page settles open on a spread with one large photograph of the sea. Natural paper physics, soft shadows between the pages. No cuts."
+    },
+    {
+      "id": "c08-sea-alive",
+      "seconds": 8,
+      "from": "K09",
+      "to": "K10",
+      "refs": [],
+      "prompt": "{STYLE} The sea photograph in the book comes alive. The waves begin to move, foam rolls in, sunlight glitters, clouds drift. The camera pushes steadily into the photograph; the cream border and the paper slide off the edges of the frame and the printed grain turns into real water and light, until the sea fills the whole frame. The horizon stays at the same height throughout. One seamless transformation. No cuts.",
+      "planB": {
+        "prompt": "{STYLE} The sea in the photograph comes alive inside the open book: the waves move, foam rolls in, sunlight glitters on the water. The camera pushes slowly toward the photograph. The book stays where it is and the paper does not move. No cuts.",
+        "startOnly": true,
+        "note": "Use if the model will not slide the paper away: give it only the start frame K09, keep c08 as a rect join in story.ts."
+      }
+    },
+    {
+      "id": "c09-shore",
+      "seconds": 8,
+      "from": "K10",
+      "to": "K11",
+      "refs": [],
+      "prompt": "{STYLE} The camera skims forward just above the water toward the coast. Waves run beneath the lens, the water turns shallow and clear, and a wide golden beach comes into view: a family with children wading, a fisherman pulling a wooden boat, young women carrying baskets, children splashing. People move naturally and without hurry, small in the frame. The camera slows and settles just above the foam. No cuts."
+    },
+    {
+      "id": "c10-sky",
+      "seconds": 6,
+      "from": "K11",
+      "to": "K12",
+      "refs": [],
+      "prompt": "{STYLE} The camera tilts up slowly from the water and the people, past the low golden sun, into a vast clear sky with soft high clouds. A few small birds cross the frame. The light settles to a calm, clean blue. The shot ends on pure sky. One continuous move. No cuts."
+    }
+  ],
+  "overlays": [
+    {
+      "id": "dust",
+      "file": "dust.mp4",
+      "usedIn": "house and library (c05 to c07)",
+      "prompt": "Slow floating dust motes drifting in a warm beam of sunlight, pure black background, shallow depth of field, no objects, no walls, no people",
+      "spec": "6 s seamless loop, 1080p"
+    },
+    {
+      "id": "mist",
+      "file": "mist.mp4",
+      "usedIn": "valley and descent (c03 to c04)",
+      "prompt": "Soft low mist drifting slowly left to right, thin layered ground fog, pure black background, no ground, no objects",
+      "spec": "8 s seamless loop, 1080p"
+    },
+    {
+      "id": "paper",
+      "file": "paper.webp",
+      "usedIn": "book chapters (c06 to c08)",
+      "prompt": "Seamless tileable close-up texture of aged cream rag paper with fine fibres and faint foxing, flat even light, no marks, no text",
+      "spec": "square, 1024 px, tileable"
+    }
+  ],
+  "audio": [
+    {
+      "id": "sound-c01",
+      "file": "c01.m4a",
+      "for": "c01",
+      "prompt": "Footsteps on a dry dirt road, a light breeze through grass, distant birdsong, a faint cloth strap creak, calm",
+      "length": "30 s loop"
+    },
+    {
+      "id": "sound-c02",
+      "file": "c02.m4a",
+      "for": "c02",
+      "prompt": "Close soft breath and a slow low heartbeat, muffled outdoor air fading away, intimate",
+      "length": "20 s"
+    },
+    {
+      "id": "sound-c03",
+      "file": "c03.m4a",
+      "for": "c03",
+      "prompt": "A soft rising whoosh and airy swell opening into wide open-air wind, no melody",
+      "length": "10 s"
+    },
+    {
+      "id": "sound-c04",
+      "file": "c04.m4a",
+      "for": "c04",
+      "prompt": "High-altitude wind, a distant river and birds, a wide ambience that slowly warms",
+      "length": "40 s loop"
+    },
+    {
+      "id": "sound-c05",
+      "file": "c05.m4a",
+      "for": "c05",
+      "prompt": "Quiet wooden-house room tone, soft wood creaks, a few brass wind chimes far away, warm and still",
+      "length": "30 s loop"
+    },
+    {
+      "id": "sound-c06",
+      "file": "c06.m4a",
+      "for": "c06",
+      "prompt": "A leather book sliding off a wooden shelf, soft footsteps on plank floor, the book set down on a wooden desk, the cover opening",
+      "length": "8 s"
+    },
+    {
+      "id": "sound-c07",
+      "file": "c07.m4a",
+      "for": "c07",
+      "prompt": "Many pages turning quickly and then slowing, paper rustle, quiet room",
+      "length": "12 s"
+    },
+    {
+      "id": "sound-c08",
+      "file": "c08.m4a",
+      "for": "c08",
+      "prompt": "Paper rustle fading into gentle ocean waves rolling in, gulls far away, ending as continuous surf",
+      "length": "20 s"
+    },
+    {
+      "id": "sound-c09",
+      "file": "c09.m4a",
+      "for": "c09",
+      "prompt": "A calm beach: shallow surf, children laughing in the distance, people murmuring, a wooden boat dragged on sand",
+      "length": "40 s loop"
+    },
+    {
+      "id": "sound-c10",
+      "file": "c10.m4a",
+      "for": "c10",
+      "prompt": "Wide airy wind, a few high birds, a faint warm pad that swells and then fades to silence",
+      "length": "20 s"
+    },
+    {
+      "id": "sound-bed",
+      "file": "bed.m4a",
+      "for": "bed",
+      "prompt": "Gentle, warm, wordless ambient piece, slow, no drums, plucked strings (oud, sarod or nylon guitar, whichever fits your region) over a soft evolving pad, hopeful",
+      "length": "90 s seamless loop"
+    }
+  ],
+  "extras": {
+    "phoneReframe": "Re-compose this image as a vertical 9:16 frame. Extend the scene above and below, keep the subject exactly as it is in the centre, and keep the lighting, colours and level of detail identical. Add no new objects.",
+    "mark": {
+      "id": "mark",
+      "file": "mark.svg",
+      "prompt": "A single-stroke line mark of an eye whose pupil is a small house, ink on transparent, square.",
+      "note": "Ask for an SVG; website phase 7 can also draw it in code."
+    },
+    "exports": [
+      "Poster and loading frame: export K05 (the valley) at 1920 x 1080; it is the site's first paint and the no-script fallback.",
+      "Share image: crop K08 (the open book) to 1200 x 630, centre on the photograph; the title is added by the site, not by the image tool."
+    ]
+  },
+  "docs": {
+    "imageIntro": "Generate in this order, 16:9, as large as your tool allows (3840 x 2160 ideal, 1920 x 1080 minimum). Attach the references named under each prompt. Make four variants of every frame and keep the one whose centre third best matches its neighbour. Replace {STYLE}, {WALKER} and {REGION} with the blocks above; `node tools/art.mjs prompt K03` prints any prompt already expanded, with the files to attach.",
+    "imageOutro": "**Before you move on, check each pair:** the eye colour and amber ring match from A0 to K04; the pupil (K04), the house (K05) and the doorway (K06) sit at the exact centre; the horizon height and sun position match between K09 and K10; the light comes from the left in every frame. Page text will be gibberish, which is fine as texture; docs/CHECKS.md says what to do if a line must be readable.",
+    "videoIntro": "Animate the clips in order, c01 to c10, each between the keyframes named in its heading. Settings for every clip: 24 fps, the longest length your tool offers, 1080p or better, start frame and end frame attached, your NEGATIVE block in the negative field if there is one, and A0, A1 or A2 as character or place references where the tool accepts them.\n\n**For every clip**\n\n1. Generate three takes and pick one with the checklist in docs/CHECKS.md.\n2. Export the chosen take's real last frame (`node tools/art-video.mjs --last <clip>` does it; the plain ffmpeg command is in docs/EXPORT.md).\n3. Use that exported frame, not the original keyframe, as the start frame of the next clip. Drift then cannot build up from clip to clip.\n4. If your tool only takes a start frame, keep the prompt and add one sentence at the end naming the end frame in words, for example: It ends on a medium close-up of his face. The site's joins hide the remaining mismatch.",
+    "extrasIntro": "The three overlays are used by website phases 5 and 6; sound is optional but changes the feel a lot; the rest is polish. The site runs without any of them.",
+    "soundIntro": "Use a sound-effects generator for the clips and a music generator for the bed. Each loop should be seamless; the site crossfades them for 1.2 seconds when the chapter changes.",
+    "overlaysIntro": "Generate the two loops on a pure black background; the site blends them with screen, so black disappears.",
+    "phonesIntro": "The plan is to crop the 16:9 clips to the centre third on phones; every keyframe already keeps its subject there, and the site stores a focal point per chapter. That costs nothing. A separate vertical set would mean generating all ten clips again at 9:16 with the same prompts and re-framed keyframes; do it only if the crop disappoints. To re-frame a keyframe for that, attach it and use this:"
+  }
+}

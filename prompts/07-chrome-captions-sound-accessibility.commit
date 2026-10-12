@@ -1,0 +1,3 @@
+feature(chrome): wordmark, progress rail, keyboard, sound and accessibility
+
+Chapter rail and keyboard navigation, the WebAudio engine with per-chapter crossfades, a described canvas, a skip link and a readable no-JavaScript view. Copy deck wired into story.ts.
