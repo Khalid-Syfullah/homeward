@@ -1,0 +1,32 @@
+{
+  "clip": "c04-descent",
+  "placeholder": false,
+  "fingerprint": "f21e38eb87692b270ead7e77c05b1c89fcb187f1",
+  "frames": 78,
+  "tiers": {
+    "768": {
+      "count": 78,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 2901028,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 78,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 7551522,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c04-descent.mp4",
+    "sha1": "5ef0eb622dbc66dfc91c08d7cff12b8636c8cf7c",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
