@@ -1,0 +1,32 @@
+{
+  "clip": "c07-pages",
+  "placeholder": false,
+  "fingerprint": "176da8aec6c6e813abdbd5027012aeaf009ddec9",
+  "frames": 66,
+  "tiers": {
+    "768": {
+      "count": 66,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1983192,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 66,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 5312156,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c07-pages.mp4",
+    "sha1": "1684d5151d5e31f5f3a9f52646e1f78254f95c77",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
