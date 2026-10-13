@@ -1,0 +1,55 @@
+/* Design tokens. The palette custom properties (--c-valley, --c-moss, --c-teak, --c-terracotta,
+   --c-brass, --c-paper, --c-sky, --c-ink) are set on <html> from src/content/story.ts; the
+   fallbacks below only matter if that inline style is missing. */
+:root {
+  --c-valley: #2f5d3a;
+  --c-moss: #6b8e4e;
+  --c-teak: #7a4b2a;
+  --c-terracotta: #b5573a;
+  --c-brass: #c9a24b;
+  --c-paper: #efe3c8;
+  --c-sky: #8fb8d8;
+  --c-ink: #1e1b16;
+
+  --bg: var(--c-paper);
+  --fg: var(--c-ink);
+
+  --font-serif: var(--font-display), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-ui: var(--font-sans), Inter, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  overscroll-behavior-y: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-brass);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
