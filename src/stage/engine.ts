@@ -1,8 +1,20 @@
-import { chapterAt, localT, tune, type Point, type Story, type StoryChapter, type Tier } from "@/content/story";
+import {
+  chapterAt,
+  joinAt,
+  joinWindow,
+  localT,
+  tune,
+  type JoinWindow,
+  type Point,
+  type Story,
+  type StoryChapter,
+  type Tier,
+} from "@/content/story";
 import { ScrollClock } from "./clock";
-import { createCompositor, type Compositor, type CompositorStats, type Layer } from "./compositor";
+import { createCompositor, type Compositor, type CompositorStats, type Layer, type Picture, type Scene } from "./compositor";
 import { focalFor, isPhoneViewport } from "./fit";
 import { chooseTier, FrameStore, MB, type Frame, type FramePick, type StoreStats } from "./frameStore";
+import { joinSpeed, type JoinKind } from "./joins";
 
 /**
  * The stage engine: one requestAnimationFrame loop that reads the scroll into the clock, plans
@@ -11,16 +23,30 @@ import { chooseTier, FrameStore, MB, type Frame, type FramePick, type StoreStats
  * loop only runs while something moves: the clock settling, a frame arriving, or a listener asking
  * for another frame. At rest it stops.
  *
+ * Inside a join window (story.ts joinAt) it picks the frames of both chapters, the outgoing one
+ * holding its last frame past the boundary and the incoming one its first before it, and hands the
+ * compositor the join with its time t and the scroll speed. Under reduced motion every join is the
+ * plain cross-dissolve.
+ *
  * URL parameters (development aids):
- *   ?hud=1       the dev HUD
- *   ?p=0.42      freeze progress at 0.42 (the scroll is ignored)
- *   ?tier=768    force a frame tier
- *   ?mem=80      frame memory cap in MB (default tune.memoryCapMb)
+ *   ?hud=1                  the dev HUD (and window.homewardStage)
+ *   ?p=0.42                 freeze progress at 0.42 (the scroll is ignored)
+ *   ?join=c01-follow&t=0.5  freeze inside the join out of that chapter, at join time t (default 0.5);
+ *                           t=0 and t=1 show the plain frames either side of the window
+ *   ?v=120                  while frozen, pretend the page scrolls at 120 vh per second (the smear
+ *                           and edge terms follow the speed, so a still hold would not show them)
+ *   ?tier=768               force a frame tier
+ *   ?mem=80                 frame memory cap in MB (default tune.memoryCapMb)
  */
 
 export interface StageParams {
   hud: boolean;
   p: number | null;
+  /** Chapter id whose join to hold, and the join time to hold it at. */
+  join: string | null;
+  t: number | null;
+  /** Pretended scroll speed while frozen, in vh per second. */
+  v: number | null;
   tier: Tier | null;
   memMb: number | null;
 }
@@ -34,14 +60,34 @@ export function readStageParams(search: string): StageParams {
     return Number.isFinite(n) ? n : null;
   };
   const p = num("p");
+  const t = num("t");
+  const v = num("v");
   const tier = num("tier");
   const mem = num("mem");
+  const join = q.get("join");
   return {
     hud: q.get("hud") === "1" || q.get("hud") === "true",
     p: p === null ? null : Math.min(1, Math.max(0, p)),
+    join: join && join.trim() !== "" ? join.trim() : null,
+    t: t === null ? null : Math.min(1, Math.max(0, t)),
+    v,
     tier: tier !== null && (tune.tiers as readonly number[]).includes(tier) ? (tier as Tier) : null,
     memMb: mem !== null && mem > 0 ? mem : null,
   };
+}
+
+/** A join in progress at p. */
+export interface StageJoin {
+  /** What is drawn: the story's join type, or "dissolve" under reduced motion. */
+  kind: JoinKind;
+  window: JoinWindow;
+  /** Join time, 0..1 across the window. */
+  t: number;
+  /** Absolute scroll speed, 0..1 against tune.joins.speedRefVh. */
+  speed: number;
+  /** The outgoing and incoming chapters' frames (null while nothing of them is loaded). */
+  out: FramePick | null;
+  into: FramePick | null;
 }
 
 /** Everything a listener may need about the frame being shown. All of it follows from p. */
@@ -66,8 +112,10 @@ export interface StageFrame {
   count: number;
   /** Fractional frame index, 0 .. count-1. */
   frame: number;
-  /** The frames handed to the compositor this frame (null when none is loaded yet). */
+  /** The frames of the chapter playing (null when none is loaded yet). */
   shown: FramePick | null;
+  /** The join in progress, if p is inside a join window. */
+  join: StageJoin | null;
   reducedMotion: boolean;
   frozen: boolean;
   /** Viewport size in CSS pixels, and the device pixel ratio the canvas uses. */
@@ -99,7 +147,7 @@ declare global {
 
 export class StageEngine {
   readonly clock = new ScrollClock();
-  params: StageParams = { hud: false, p: null, tier: null, memMb: null };
+  params: StageParams = { hud: false, p: null, join: null, t: null, v: null, tier: null, memMb: null };
 
   private story: Story;
   private store: FrameStore | null = null;
@@ -126,7 +174,20 @@ export class StageEngine {
   setStory(story: Story) {
     if (story === this.story) return;
     this.story = story;
+    this.hold();
     this.wake();
+  }
+
+  /** The progress ?p= or ?join=&t= freeze the clock at, for this story (null: follow the scroll). */
+  private hold() {
+    const { join, t, p } = this.params;
+    let frozen = p;
+    if (join) {
+      const w = joinWindow(join, this.story);
+      if (w) frozen = w.startP + (t ?? 0.5) * (w.endP - w.startP);
+      else console.warn(`Homeward: ?join=${join} names no chapter with a join in this story.`);
+    }
+    this.clock.frozen = frozen;
   }
 
   subscribe(listener: StageListener): () => void {
@@ -160,7 +221,7 @@ export class StageEngine {
   attach(canvas: HTMLCanvasElement): () => void {
     this.canvas = canvas;
     this.params = readStageParams(window.location.search);
-    this.clock.frozen = this.params.p;
+    this.hold();
 
     const store = new FrameStore(this.wake);
     if (this.params.memMb) store.setCap(this.params.memMb * MB);
@@ -252,6 +313,13 @@ export class StageEngine {
     return { key: frame.key, image: frame.image, width: frame.width, height: frame.height, focal };
   }
 
+  /** A pick as a compositor picture, if the store still holds both of its frames. */
+  private picture(pick: FramePick | null): Picture | null {
+    const store = this.store;
+    if (!pick || !store || !store.holds(pick.a) || !store.holds(pick.b)) return null;
+    return { a: this.layer(pick.a), b: this.layer(pick.b), mix: pick.mix };
+  }
+
   private render = (now: number) => {
     this.raf = 0;
     const canvas = this.canvas;
@@ -264,7 +332,10 @@ export class StageEngine {
     // 1. The clock.
     if (this.clock.frozen === null) this.clock.setTarget(this.readScroll());
     let more = this.clock.tick(dt);
-    const { p, velocity } = this.clock;
+    const { p } = this.clock;
+    const story = this.story;
+    // A frozen hold has no velocity; ?v= pretends one, so the speed terms of a join can be seen.
+    const velocity = this.clock.frozen !== null && this.params.v !== null ? this.params.v / story.totalVh : this.clock.velocity;
     if (velocity > 0) this.direction = 1;
     else if (velocity < 0) this.direction = -1;
 
@@ -274,16 +345,33 @@ export class StageEngine {
     this.compositor?.resize(Math.max(1, Math.round(this.cssWidth * dpr)), Math.max(1, Math.round(this.cssHeight * dpr)));
 
     // 3. Loads, then the frames to draw: the wanted pair, else the nearest loaded frame, else
-    //    whatever the compositor drew last. Never a blank frame.
-    const story = this.story;
+    //    whatever the compositor drew last. Never a blank frame. Inside a join window, both
+    //    chapters' frames and the join itself; if one side has nothing loaded, the plain frame.
     store.update(p, this.direction, story);
     const chapter = chapterAt(p, story);
     const count = store.countFor(chapter);
     const t = localT(p, story);
     const shown = store.pick(p, story);
+    const active = joinAt(p, story);
+    let join: StageJoin | null = null;
+    let scene: Scene | null = this.picture(shown);
+    if (active) {
+      const { window: w } = active;
+      const out = store.pickChapter(w.from, p, story);
+      const into = store.pickChapter(w.to, p, story);
+      const kind: JoinKind = this.clock.reducedMotion ? "dissolve" : w.type;
+      const speed = joinSpeed(velocity, story.totalVh);
+      join = { kind, window: w, t: active.t, speed, out, into };
+      const outPicture = this.picture(out);
+      const intoPicture = this.picture(into);
+      if (outPicture && intoPicture) {
+        scene = {
+          ...outPicture,
+          join: { kind, t: active.t, speed, px: dpr, into: intoPicture, pupil: w.from.anchors.pupil, photoRect: w.from.anchors.photoRect },
+        };
+      }
+    }
     if (this.compositor) {
-      const usable = shown && store.holds(shown.a) && store.holds(shown.b);
-      const scene = usable ? { a: this.layer(shown.a), b: this.layer(shown.b), mix: shown.mix } : null;
       if (this.compositor.draw(scene) && !canvas.hasAttribute("data-ready")) canvas.setAttribute("data-ready", "");
     }
 
@@ -301,6 +389,7 @@ export class StageEngine {
       count,
       frame: t * (count - 1),
       shown,
+      join,
       reducedMotion: this.clock.reducedMotion,
       frozen: this.clock.frozen !== null,
       width: this.cssWidth,

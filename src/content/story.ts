@@ -142,8 +142,8 @@ export const tune = {
   slowConnections: ["slow-2g", "2g", "3g"],
   /** Development only: manifests are read again when the tab regains focus, at most this often, in ms. */
   manifestRecheckMs: 2000,
-  /** GPU textures kept for recently drawn frames. */
-  textureCache: 6,
+  /** GPU textures kept for recently drawn frames (a join draws two frame pairs, plus the pair before). */
+  textureCache: 8,
   /** Scroll clock: angular frequency of the critically damped spring that follows the scroll, in 1/s. */
   clockOmega: 9,
   /** The clock settles (and the render loop idles) once this close to the scroll, in p... */
@@ -158,6 +158,45 @@ export const tune = {
   defaultFocal: { x: 0.5, y: 0.5 },
   defaultPupil: { x: 0.5, y: 0.5 },
   defaultPhotoRect: { x: 0.2, y: 0.2, w: 0.6, h: 0.45 },
+  /**
+   * The three joins (src/stage/joins.ts). Every join is a pure function of its time t (0..1 over
+   * the join window) and is exactly the outgoing picture at t = 0 and the incoming one at t = 1;
+   * the terms marked "at full speed" grow with the absolute scroll velocity and are zero at rest.
+   * Lengths are CSS pixels (the compositor scales them by the device pixel ratio).
+   */
+  joins: {
+    /** Scroll speed, in viewport heights per second, at which the velocity terms reach full strength. */
+    speedRefVh: 250,
+    push: {
+      /** Zoom push: the outgoing frame grows from 1 to 1 + zoom while the incoming settles from 1 + zoom to 1. */
+      zoom: 0.06,
+      /** Radial smear reach at full speed, mid-window, as a share of the distance from the screen centre. */
+      smear: 0.035,
+    },
+    portal: {
+      /** The incoming frame starts this much larger inside the circle and settles to 1. */
+      zoom: 0.25,
+      /** Feathered edge: its width at rest and the extra width at full speed. */
+      feather: 22,
+      featherSpeed: 44,
+      /** Noise bite of the edge: amplitude at rest and the extra at full speed... */
+      bite: 9,
+      biteSpeed: 28,
+      /** ...over this many noise cells around the circle and one cell per this many pixels outward. */
+      biteCells: 18,
+      biteLength: 90,
+      /** The faint dark ring at the rim: its width and its strength (0..1). */
+      ring: 34,
+      ringStrength: 0.22,
+    },
+    rect: {
+      /** Soft edge of the growing photograph: its width at rest and the extra width at full speed. */
+      feather: 6,
+      featherSpeed: 36,
+      /** Join time by which the photograph's own picture has dissolved into the live incoming frame. */
+      dissolveEnd: 0.45,
+    },
+  },
 } as const;
 
 /** A frame tier: the width in pixels of one stored frame set (public/frames/<clip>/<tier>/). */
@@ -419,7 +458,14 @@ export function chapterAt(p: number, s: Story = story): StoryChapter {
 
 /** Local time 0..1 inside the chapter playing at p (1 throughout the end screen). */
 export function localT(p: number, s: Story = story): number {
-  const c = chapterAt(p, s);
+  return localTOf(chapterAt(p, s), p, s);
+}
+
+/**
+ * Local time 0..1 of one given chapter at p: 0 before the chapter starts and 1 after it ends, so
+ * across a join the outgoing chapter holds its last frame and the incoming one its first.
+ */
+export function localTOf(c: StoryChapter, p: number, s: Story = story): number {
   return clamp01((clamp01(p) * s.totalVh - c.startVh) / c.scrollVh);
 }
 

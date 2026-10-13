@@ -3,6 +3,7 @@ import {
   chapters as allChapters,
   framePath,
   localT,
+  localTOf,
   manifestPath,
   tune,
   type Story,
@@ -615,15 +616,25 @@ export class FrameStore {
    * chapter or tier) stands in. Null only before the very first frame has loaded.
    */
   pick(p: number, story: Story): FramePick | null {
-    const chapter = chapterAt(p, story);
+    return this.pickChapter(chapterAt(p, story), p, story);
+  }
+
+  /**
+   * The frames of one given chapter at p, for the two sides of a join: before the chapter starts
+   * it holds its first frame, after it ends its last (story.ts localTOf). If the wanted frames are
+   * missing, the chapter's own nearest loaded frame stands in, else the nearest loaded frame of all.
+   */
+  pickChapter(chapter: StoryChapter, p: number, story: Story): FramePick | null {
     const manifest = this.manifests.get(chapter.clip);
     const t = now();
+    let wanted = 0;
     if (manifest) {
       const tier = this.clipTier(chapter.clip);
       const count = this.tierInfo(chapter.clip, tier, chapter.frames).count;
-      const f = localT(p, story) * (count - 1);
+      const f = localTOf(chapter, p, story) * (count - 1);
       const i0 = Math.floor(f);
       const i1 = Math.min(i0 + 1, count - 1);
+      wanted = f;
       const a = this.frames.get(this.key(chapter.clip, tier, manifest.version, i0));
       const b = this.frames.get(this.key(chapter.clip, tier, manifest.version, i1));
       if (a && b) {
@@ -632,20 +643,25 @@ export class FrameStore {
       }
     }
 
-    // Nearest loaded frame by its position in p; the current tier and version win a tie.
+    // Nearest loaded frame: this chapter's own by index first, else any by its position in p;
+    // the current tier and version win a tie.
     const clips = this.clipsOf(story);
     let best: Frame | null = null;
+    let bestOwn = false;
     let bestDist = Infinity;
     let bestPreferred = false;
     for (const frame of this.frames.values()) {
       const c = clips.get(frame.clip);
       if (!c) continue;
-      const at = c.startP + (frame.count > 1 ? frame.index / (frame.count - 1) : 0) * (c.endP - c.startP);
-      const dist = Math.abs(at - p);
+      const own = frame.clip === chapter.clip;
+      if (bestOwn && !own) continue;
+      const share = frame.count > 1 ? frame.index / (frame.count - 1) : 0;
+      const dist = own ? Math.abs(frame.index - wanted) : Math.abs(c.startP + share * (c.endP - c.startP) - p);
       const preferred =
         frame.tier === this.clipTier(frame.clip) && frame.version === (this.manifests.get(frame.clip)?.version ?? "");
-      if (dist < bestDist || (dist === bestDist && preferred && !bestPreferred)) {
+      if ((own && !bestOwn) || dist < bestDist || (dist === bestDist && preferred && !bestPreferred)) {
         best = frame;
+        bestOwn = own;
         bestDist = dist;
         bestPreferred = preferred;
       }

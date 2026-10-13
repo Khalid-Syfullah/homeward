@@ -57,6 +57,43 @@
   color: var(--c-sky);
 }
 
+/* The anchor picker's mark: a crosshair for a point, an outline for a rectangle. */
+.marker {
+  position: fixed;
+  z-index: 99;
+  pointer-events: none;
+  border: 1px solid var(--c-brass);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-ink) 60%, transparent);
+}
+
+.marker[data-shape="point"] {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.marker[data-shape="point"]::before,
+.marker[data-shape="point"]::after {
+  content: "";
+  position: absolute;
+  background: var(--c-brass);
+}
+
+.marker[data-shape="point"]::before {
+  left: 50%;
+  top: -8px;
+  bottom: -8px;
+  width: 1px;
+}
+
+.marker[data-shape="point"]::after {
+  top: 50%;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+}
+
 @media (max-width: 768px) {
   .hud {
     font-size: 9px;
