@@ -1,0 +1,32 @@
+{
+  "clip": "c01-follow",
+  "placeholder": false,
+  "fingerprint": "0d1d716adfdedfcfd5aa9ee3ebefbb573b527c61",
+  "frames": 60,
+  "tiers": {
+    "768": {
+      "count": 60,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1647174,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 60,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 4315576,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c01-follow.mp4",
+    "sha1": "4369c0a16d66e0860332df17277d44d62421ca34",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
