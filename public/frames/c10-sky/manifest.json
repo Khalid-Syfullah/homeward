@@ -1,0 +1,32 @@
+{
+  "clip": "c10-sky",
+  "placeholder": false,
+  "fingerprint": "5543026b66a7b29d8ad4b02435146223b10bad2e",
+  "frames": 48,
+  "tiers": {
+    "768": {
+      "count": 48,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 852312,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 48,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 2127246,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c10-sky.mp4",
+    "sha1": "c9172c958c354f08d09647ef711173053d83f693",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
