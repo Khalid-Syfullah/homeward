@@ -1,0 +1,32 @@
+{
+  "clip": "c09-shore",
+  "placeholder": false,
+  "fingerprint": "5fee858f0d947a5f8577c8e8a5deffff6de409bc",
+  "frames": 60,
+  "tiers": {
+    "768": {
+      "count": 60,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1594050,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 60,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 4087732,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c09-shore.mp4",
+    "sha1": "2c9aa14aa56d53c066eccaff1f19fed553658231",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
