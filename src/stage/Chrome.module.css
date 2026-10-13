@@ -276,16 +276,48 @@
   border: 0;
 }
 
-@media (max-width: 768px), (orientation: portrait) {
+/* Phones and portrait screens (tune.phoneMaxWidth and tune.phoneMaxHeight): the rail is reduced to a thin
+   bar along the left edge, its track and fill, with nothing for a thumb to catch while it scrolls. The
+   chapter buttons stay in the accessibility tree and the tab order, and the rail opens out again while
+   one of them has keyboard focus. */
+@media (max-width: 768px), (orientation: portrait), (max-height: 500px) {
   .rail {
+    left: 0;
+    width: 3px;
+  }
+
+  .track {
+    left: 0;
+    width: 3px;
+  }
+
+  .ticks {
+    opacity: 0;
+  }
+
+  .rail .tick {
+    top: -13px;
+    width: 26px;
+    height: 26px;
+    pointer-events: none;
+  }
+
+  .rail:focus-within {
     left: 0.15rem;
     width: 26px;
   }
 
-  .tick {
-    top: -13px;
-    width: 26px;
-    height: 26px;
+  .rail:focus-within .track {
+    left: 50%;
+    width: 1px;
+  }
+
+  .rail:focus-within .ticks {
+    opacity: 1;
+  }
+
+  .rail:focus-within .tick {
+    pointer-events: auto;
   }
 
   .sound {

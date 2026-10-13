@@ -31,6 +31,8 @@ export interface Overlay {
   retry(): void;
   readonly active: boolean;
   readonly polling: boolean;
+  /** Nothing about it is still on its way: not loading or seeking (true when it failed or was never loaded). */
+  readonly settled: boolean;
   source(): OverlaySource | null;
   dispose(): void;
 }
@@ -86,6 +88,8 @@ export class VideoOverlay implements Overlay {
   private fail = () => {
     this.failed = true;
     this.dispose();
+    // The stage carries on without it; let it render once more knowing that.
+    this.wake();
   };
 
   private onSeeked = () => {
@@ -155,6 +159,11 @@ export class VideoOverlay implements Overlay {
     return this.playing && !this.callbacks;
   }
 
+  get settled(): boolean {
+    const video = this.video;
+    return !video || this.failed || (!video.seeking && video.readyState >= 2);
+  }
+
   /** The video, if it has a frame to show. */
   source(): OverlaySource | null {
     const video = this.video;
@@ -205,6 +214,7 @@ export class ImageOverlay implements Overlay {
   private fail = () => {
     this.failed = true;
     this.dispose();
+    this.wake();
   };
 
   /** A still has nothing to play or hold. */
@@ -223,6 +233,10 @@ export class ImageOverlay implements Overlay {
 
   get polling(): boolean {
     return false;
+  }
+
+  get settled(): boolean {
+    return !this.image || this.failed || this.image.complete;
   }
 
   source(): OverlaySource | null {

@@ -5,11 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "predev": "node scripts/placeholders.mjs && node scripts/overlays.mjs && node scripts/audio.mjs",
-    "prebuild": "node scripts/overlays.mjs && node scripts/audio.mjs",
+    "prebuild": "node scripts/placeholders.mjs && node scripts/overlays.mjs && node scripts/audio.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "test": "playwright test",
+    "perf": "node scripts/perf.mjs",
     "placeholders": "node scripts/placeholders.mjs",
     "art:import": "node scripts/art-import.mjs",
     "art:check": "node scripts/art-check.mjs",
@@ -22,6 +24,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

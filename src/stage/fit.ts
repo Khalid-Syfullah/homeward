@@ -44,12 +44,18 @@ export function screenToFrame(point: Point, fit: Fit): Point {
   return { x: point.x * fit.scaleX + fit.offsetX, y: point.y * fit.scaleY + fit.offsetY };
 }
 
-/** Phones get the 768 tier and the lower DPR cap. */
-export function isPhoneViewport(cssWidth: number): boolean {
-  return cssWidth <= tune.phoneMaxWidth;
+/**
+ * Phones get the 768 tier and the lower DPR cap: a viewport no wider than tune.phoneMaxWidth, or no
+ * taller than tune.phoneMaxHeight (a phone held sideways).
+ */
+export function isPhoneViewport(cssWidth: number, cssHeight: number): boolean {
+  return cssWidth <= tune.phoneMaxWidth || cssHeight <= tune.phoneMaxHeight;
 }
+
+/** The same rule as a CSS media query, for markup that must choose before any script runs. */
+export const PHONE_MEDIA = `(max-width: ${tune.phoneMaxWidth}px), (max-height: ${tune.phoneMaxHeight}px)`;
 
 /** The chapter's focal point for this viewport: the phone one on phones and portrait screens. */
 export function focalFor(chapter: Pick<Chapter, "focal">, cssWidth: number, cssHeight: number): Point {
-  return isPhoneViewport(cssWidth) || cssHeight > cssWidth ? chapter.focal.phone : chapter.focal.desktop;
+  return isPhoneViewport(cssWidth, cssHeight) || cssHeight > cssWidth ? chapter.focal.phone : chapter.focal.desktop;
 }

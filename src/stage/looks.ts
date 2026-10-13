@@ -99,6 +99,37 @@ function mixState(a: VignetteState, b: VignetteState, t: number): VignetteState 
   return { strength: lerp(a.strength, b.strength, t), inner: lerp(a.inner, b.inner, t), outer: lerp(a.outer, b.outer, t) };
 }
 
+/**
+ * The vignette state of a look at local time t: from `from` to `to` across the chapter, or held at the
+ * middle under reduced motion. Null when the look has no vignette.
+ */
+export function vignetteState(look: Look | undefined, t: number, reducedMotion: boolean): VignetteState | null {
+  const v = look?.vignette;
+  if (!v) return null;
+  return mixState(v.from, v.to, reducedMotion ? 0.5 : smooth(clamp01(t)));
+}
+
+/**
+ * The same vignette as a CSS radial gradient, for the loading frame (Stage.tsx), whose box is a size
+ * container: lengths are in cqh, the box's height, as the shader's radii are in viewport heights. The
+ * shader's smoothstep over the squared distance is sampled at `stops` points between the radii.
+ */
+export function vignetteGradient(look: Look | undefined, t: number, reducedMotion: boolean, stops = 16): string | null {
+  const v = look?.vignette;
+  const state = vignetteState(look, t, reducedMotion);
+  if (!v || !state || state.strength <= 0) return null;
+  const [r, g, b] = hexRgb(palette[v.color]).map((c) => Math.round(c * 255));
+  const inner = state.inner;
+  const outer = Math.max(state.outer, state.inner + 1e-3);
+  const parts: string[] = [];
+  for (let k = 0; k <= stops; k++) {
+    const radius = inner + ((outer - inner) * k) / stops;
+    const alpha = state.strength * smoothBetween(inner * inner, outer * outer, radius * radius);
+    parts.push(`rgb(${r} ${g} ${b} / ${alpha.toFixed(4)}) ${(radius * 100).toFixed(3)}cqh`);
+  }
+  return `radial-gradient(circle at 50% 50%, ${parts.join(", ")})`;
+}
+
 /** The look of a chapter at local time t, or null when it has none (or nothing of it is showing). */
 export function pictureLook(chapter: Pick<StoryChapter, "look" | "anchors">, t: number, env: LookEnv, frame: LookFrame): PictureLook | null {
   const look: Look | undefined = chapter.look;
@@ -132,7 +163,7 @@ export function pictureLook(chapter: Pick<StoryChapter, "look" | "anchors">, t: 
   let vignette: VignetteLook | null = null;
   if (look.vignette) {
     const v = look.vignette;
-    const state = mixState(v.from, v.to, moving ? smooth(time) : 0.5);
+    const state = vignetteState(look, time, !moving)!;
     if (state.strength > 0) {
       vignette = {
         centre: v.toward === "pupil" ? pupilOnScreen() : middle,

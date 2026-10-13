@@ -15,8 +15,10 @@ export function Fallback() {
         <p className={styles.wordmark}>{site.wordmark}</p>
         <p className={styles.note}>{site.a11y.noScript}</p>
       </header>
+      {/* Lazy: with scripts on this column is never displayed, so the poster is never fetched (and not
+          preloaded); with scripts off browsers load lazy images straight away. */}
       {/* eslint-disable-next-line @next/next/no-img-element -- plain markup, it has to work with no scripts */}
-      <img className={styles.poster} src={site.poster.src} alt={site.poster.alt} width={1920} height={1080} />
+      <img className={styles.poster} src={site.poster.src} alt={site.poster.alt} width={1920} height={1080} loading="lazy" />
       <ol className={styles.list}>
         {chapters.map((c) => (
           <li key={c.id} className={styles.item}>

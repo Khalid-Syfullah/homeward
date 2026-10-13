@@ -152,11 +152,32 @@ export const tune = {
   framesPerVh: 0.6,
   /** Frame tiers written by the placeholders and art:import, widest first. */
   tiers: [1440, 768] as const,
-  /** Viewports at or below this CSS width use the 768 tier. */
+  /**
+   * A phone is a viewport at or below this CSS width, or at or below phoneMaxHeight (a phone held
+   * sideways). Phones get the 768 tier, the phone DPR cap, the phone focal points, captions in the lower
+   * third and the rail as a thin bar. The CSS media queries of the phone layout mirror both numbers.
+   */
   phoneMaxWidth: 768,
+  phoneMaxHeight: 500,
   /** Device pixel ratio caps for the stage canvas. */
   dprCapDesktop: 1.75,
   dprCapPhone: 1.5,
+  /**
+   * First paint (frameStore.ts, docs/PERF.md). Before anything else the store loads the `frames` frames
+   * nearest the landing position at the narrowest tier, plus the frame (or pair) on screen at the tier the
+   * device plays, which is also the loading frame the page shows before any script runs. Then it loads at
+   * the playing tier as usual, and the narrow frames stand in until they are replaced.
+   */
+  firstPaint: { frames: 24 },
+  /** The performance budget that npm run perf (scripts/perf.mjs) checks; docs/PERF.md has the numbers. */
+  budget: {
+    /** Bytes of the loading frame and the first-paint frames, in MB (1 MB = 1,000,000 bytes, as in docs/EXPORT.md). */
+    firstPaintMb: 1.5,
+    /** The first film frame on screen on the fast-4G profile, in ms after navigation starts. */
+    firstFrameMs: 1500,
+    /** Scrubbing frame rate on a mid laptop. */
+    fps: 60,
+  },
   /** Aspect ratio of every frame (16:9). */
   frameAspect: 16 / 9,
   /** Chapters loaded ahead of the current one, in the direction of travel. */
@@ -343,7 +364,27 @@ export const tune = {
 /** A frame tier: the width in pixels of one stored frame set (public/frames/<clip>/<tier>/). */
 export type Tier = (typeof tune.tiers)[number];
 
-const centre: Focal = { desktop: { ...tune.defaultFocal }, phone: { ...tune.defaultFocal } };
+/**
+ * The two anchors, in 0..1 coordinates of the clip's last frame. Pick them on the real frames with the
+ * HUD (?hud=1: click for a point, drag for a rectangle) and paste them here; the focal points of the
+ * chapters they belong to follow them.
+ */
+/** c02 ends on the pupil at the exact centre of the frame (K04); the portal join opens from it. */
+const pupil: Point = { x: 0.5, y: 0.5 };
+/** c07 ends and c08 starts on the sea photograph, centred and about 60 percent of the frame wide (K09). */
+const seaPhoto: Rect = { x: 0.2, y: 0.2, w: 0.6, h: 0.45 };
+
+const centreOf = (r: Rect): Point => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+
+/**
+ * A chapter's focal point, the same on desktop and phones unless a phone one is given. The cover fit
+ * (src/stage/fit.ts) keeps it as near the centre of the screen as the crop allows. A 16:9 desktop shows
+ * the whole frame, so there it only matters on wider or narrower windows; a portrait phone shows the
+ * full height but only about a quarter of the width (390x844: 26 percent, 360x640: 32 percent), so there
+ * x decides what stays in view. Every keyframe keeps its subject in the centre third (docs/STYLE-BIBLE.md);
+ * the values below say where in it, per chapter.
+ */
+const focus = (desktop: Point, phone: Point = desktop): Focal => ({ desktop: { ...desktop }, phone: { ...phone } });
 
 /** All ten chapters in film order. */
 export const chapters: readonly Chapter[] = [
@@ -356,7 +397,8 @@ export const chapters: readonly Chapter[] = [
     frames: 60,
     join: "push",
     anchors: {},
-    focal: centre,
+    // The man in the centre third (K01, K02), ending on his face a little above the middle (K03).
+    focal: focus({ x: 0.5, y: 0.45 }),
     caption: { title: "The road", line: "Some journeys begin with nothing but a road." },
     look: {
       scale: { from: 1, to: 1.03 },
@@ -380,8 +422,9 @@ export const chapters: readonly Chapter[] = [
     frames: 42,
     join: "portal",
     joinIntoOptional: "push",
-    anchors: { pupil: { ...tune.defaultPupil } },
-    focal: centre,
+    anchors: { pupil: { ...pupil } },
+    // The eye closes in on the pupil, so the portal opens at the middle of a phone too.
+    focal: focus(pupil),
     caption: { title: "The eye", line: "Look closer." },
     look: {
       breath: { amplitude: 0.01, periodS: 6 },
@@ -406,7 +449,8 @@ export const chapters: readonly Chapter[] = [
     join: "push",
     optional: { joinWhenSkipped: "portal" },
     anchors: {},
-    focal: centre,
+    // The valley with the house at the exact centre (K05).
+    focal: focus({ x: 0.5, y: 0.5 }),
     caption: { title: "The valley", line: "Everything you carry comes from somewhere." },
     overlays: ["mist"],
     ambience: "c03",
@@ -420,7 +464,8 @@ export const chapters: readonly Chapter[] = [
     frames: 78,
     join: "push",
     anchors: {},
-    focal: centre,
+    // The house dead centre all the way down to the doorway (K05 to K06).
+    focal: focus({ x: 0.5, y: 0.5 }),
     caption: { title: "The way down", line: "One house waits at the end of the path." },
     overlays: ["mist"],
     ambience: "c04",
@@ -434,7 +479,8 @@ export const chapters: readonly Chapter[] = [
     frames: 60,
     join: "push",
     anchors: {},
-    focal: centre,
+    // Through the doorway (K06) to the one book in the middle of the shelf (K07).
+    focal: focus({ x: 0.5, y: 0.5 }),
     caption: { title: "The house", line: "It remembers every hand that built it." },
     overlays: ["dust"],
     ambience: "c05",
@@ -448,7 +494,8 @@ export const chapters: readonly Chapter[] = [
     frames: 48,
     join: "push",
     anchors: {},
-    focal: centre,
+    // The book carried to the desk, ending on the monument photograph at the centre (K08).
+    focal: focus({ x: 0.5, y: 0.5 }),
     caption: { title: "The book", line: "Choose one." },
     overlays: ["dust", "paper"],
     ambience: "c06",
@@ -462,7 +509,8 @@ export const chapters: readonly Chapter[] = [
     frames: 66,
     join: "push",
     anchors: {},
-    focal: centre,
+    // The pages settle on the sea photograph (K09), so the crop holds it from the start.
+    focal: focus(centreOf(seaPhoto)),
     caption: { title: "The pages", line: "Turn them as fast as you like." },
     overlays: ["dust", "paper"],
     pageFlip: true,
@@ -478,8 +526,9 @@ export const chapters: readonly Chapter[] = [
     // 'rect' while c08 ends inside the open book; switch to 'push' if it ends on the
     // full-frame sea (npm run art:check reports which).
     join: "rect",
-    anchors: { photoRect: { ...tune.defaultPhotoRect } },
-    focal: centre,
+    anchors: { photoRect: { ...seaPhoto } },
+    // The photograph the camera pushes into; the rect join grows it from where it sits on screen.
+    focal: focus(centreOf(seaPhoto)),
     caption: { title: "The sea", line: "The picture begins to breathe." },
     overlays: ["paper"],
     ambience: "c08",
@@ -493,7 +542,8 @@ export const chapters: readonly Chapter[] = [
     frames: 60,
     join: "push",
     anchors: {},
-    focal: centre,
+    // Over the water to the people along the waterline, below the horizon (K10 to K11).
+    focal: focus({ x: 0.5, y: 0.55 }),
     caption: { title: "The shore", line: "People. Water. Time." },
     ambience: "c09",
   },
@@ -506,7 +556,8 @@ export const chapters: readonly Chapter[] = [
     frames: 48,
     join: "none",
     anchors: {},
-    focal: centre,
+    // Up from the shore into open sky (K12).
+    focal: focus({ x: 0.5, y: 0.5 }),
     caption: { title: "The sky", line: "And above all of it, this." },
     ambience: "c10",
   },
@@ -720,6 +771,16 @@ export function joinAt(p: number, s: Story = story): { window: JoinWindow; t: nu
 /** Frame folder of a clip at a tier, e.g. /frames/c01-follow/1440. */
 export function framePath(clip: string, tier: number, index: number): string {
   return `/frames/${clip}/${tier}/f_${String(index + 1).padStart(3, "0")}.webp`;
+}
+
+/**
+ * The URL a frame is requested at: its path plus the clip's manifest fingerprint, so frames generated or
+ * imported again are never served from a stale cache. The loading frame the server renders and the frame
+ * store's fetch use this same URL, so the browser fetches the opening frame once.
+ */
+export function frameUrl(clip: string, tier: number, index: number, version: string): string {
+  const path = framePath(clip, tier, index);
+  return version ? `${path}?v=${encodeURIComponent(version)}` : path;
 }
 
 /** Where an overlay file is served from (copied from art/source/overlays/ by npm run overlays). */

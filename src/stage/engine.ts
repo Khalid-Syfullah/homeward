@@ -13,10 +13,19 @@ import {
   type Tier,
 } from "@/content/story";
 import { ScrollClock } from "./clock";
-import { createCompositor, type Compositor, type CompositorStats, type Layer, type OverlayScene, type Picture, type Scene } from "./compositor";
-import { focalFor, isPhoneViewport } from "./fit";
-import { chooseTier, FrameStore, MB, type Frame, type FramePick, type StoreStats } from "./frameStore";
-import { joinSpeed, type JoinKind } from "./joins";
+import {
+  createCompositor,
+  type Capture,
+  type Compositor,
+  type CompositorStats,
+  type Layer,
+  type OverlayScene,
+  type Picture,
+  type Scene,
+} from "./compositor";
+import { coverFit, focalFor, frameToScreen, isPhoneViewport } from "./fit";
+import { chooseTier, FrameStore, markTiming, MB, type Frame, type FramePick, type StoreStats } from "./frameStore";
+import { joinSpeed, rectOnScreen, type JoinKind } from "./joins";
 import { breathCalm, overlaysAt, pictureLook, type LookEnv, type OverlayState } from "./looks";
 import { createOverlay, type Overlay } from "./overlay";
 import { PageFlip } from "./pageFlip";
@@ -42,19 +51,26 @@ import { PageFlip } from "./pageFlip";
  *
  * URL parameters (development aids):
  *   ?hud=1                  the dev HUD (and window.homewardStage)
+ *   ?test=1                 window.homewardStage without the HUD (the Playwright tests and npm run perf)
  *   ?p=0.42                 freeze progress at 0.42 (the scroll is ignored)
- *   ?join=c01-follow&t=0.5  freeze inside the join out of that chapter, at join time t (default 0.5);
- *                           t=0 and t=1 show the plain frames either side of the window
+ *   ?join=c01-follow&t=0.5  freeze inside the join out of that chapter, at join time t (default 0.5),
+ *                           drawn through the join even at its ends: t=0 and t=1 must give the plain
+ *                           frames either side of the window, to the bit (the tests check it)
  *   ?v=120                  while frozen, pretend the page scrolls at 120 vh per second (the smear
  *                           and edge terms follow the speed, so a still hold would not show them)
  *   ?clock=1500             hold the ambient clock at 1500 ms: the breath stands at that time and the overlay
  *                           video is paused at that time of its loop, so screenshots and hashes repeat exactly
  *   ?tier=768               force a frame tier
  *   ?mem=80                 frame memory cap in MB (default tune.memoryCapMb)
+ *
+ * The first successful draw sets data-ready on the canvas and the user timing mark homeward:first-frame
+ * (the frame store marks homeward:first-paint when the first-paint frames are in); npm run perf reads both.
  */
 
 export interface StageParams {
   hud: boolean;
+  /** Expose window.homewardStage without the HUD. */
+  test: boolean;
   p: number | null;
   /** Chapter id whose join to hold, and the join time to hold it at. */
   join: string | null;
@@ -82,8 +98,10 @@ export function readStageParams(search: string): StageParams {
   const tier = num("tier");
   const mem = num("mem");
   const join = q.get("join");
+  const flag = (name: string) => q.get(name) === "1" || q.get(name) === "true";
   return {
-    hud: q.get("hud") === "1" || q.get("hud") === "true",
+    hud: flag("hud"),
+    test: flag("test"),
     p: p === null ? null : Math.min(1, Math.max(0, p)),
     join: join && join.trim() !== "" ? join.trim() : null,
     t: t === null ? null : Math.min(1, Math.max(0, t)),
@@ -152,10 +170,28 @@ export interface StageFrame {
 /** Called once per rendered frame. Return true to ask for another frame (ambient motion). */
 export type StageListener = (frame: StageFrame) => boolean | void;
 
+/** Time spent inside the render loop's step (the clock, the plan, the draw and every listener), in ms. */
+export interface RenderTiming {
+  frames: number;
+  lastMs: number;
+  meanMs: number;
+  maxMs: number;
+}
+
 export interface StageStats {
   store: StoreStats | null;
   chapter: ReturnType<FrameStore["chapterStats"]> | null;
   compositor: CompositorStats | null;
+  render: RenderTiming;
+}
+
+/** Where a chapter's anchors and focal point land on screen at the current viewport, in CSS pixels. */
+export interface AnchorsOnScreen {
+  width: number;
+  height: number;
+  focal: Point;
+  pupil: Point | null;
+  photoRect: { x: number; y: number; w: number; h: number } | null;
 }
 
 interface NetworkInformationLike extends EventTarget {
@@ -164,7 +200,7 @@ interface NetworkInformationLike extends EventTarget {
 
 declare global {
   interface Window {
-    /** The stage engine, exposed with ?hud=1 for debugging and browser tests. */
+    /** The stage engine, exposed with ?hud=1 (debugging) or ?test=1 (browser tests, npm run perf). */
     homewardStage?: StageEngine;
     /** The sound engine, exposed with ?hud=1 (window.homewardSound.stats()). */
     homewardSound?: import("./sound").SoundEngine;
@@ -173,9 +209,11 @@ declare global {
 
 export class StageEngine {
   readonly clock = new ScrollClock();
-  params: StageParams = { hud: false, p: null, join: null, t: null, v: null, clock: null, tier: null, memMb: null };
+  params: StageParams = { hud: false, test: false, p: null, join: null, t: null, v: null, clock: null, tier: null, memMb: null };
 
   private story: Story;
+  /** The clip manifests the server inlined in the page (by clip; null where a clip has no frames). */
+  private readonly manifests: Readonly<Record<string, unknown>>;
   private store: FrameStore | null = null;
   private compositor: Compositor | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -195,9 +233,17 @@ export class StageEngine {
   private breathing = false;
   private look: LookEnv = { width: 0, height: 0, reducedMotion: false, now: 0, calm: 1 };
   private p = 0;
+  /** Set while building one frame: a visible overlay is still loading or seeking. */
+  private overlaysPending = false;
+  /** The last render drew the complete picture for its p: exact frames, nothing still moving or loading. */
+  private complete = false;
+  /** What made up `complete` in the last render, for settleReport(). */
+  private completeParts = { drew: false, exact: false, clock: false, flipping: false, breathing: false, overlaysPending: false };
+  private timing: RenderTiming = { frames: 0, lastMs: 0, meanMs: 0, maxMs: 0 };
 
-  constructor(story: Story) {
+  constructor(story: Story, manifests: Readonly<Record<string, unknown>> = {}) {
     this.story = story;
+    this.manifests = manifests;
   }
 
   /** The frame state most recently rendered. */
@@ -237,11 +283,127 @@ export class StageEngine {
       store: this.store?.stats() ?? null,
       chapter: this.store && this.latest ? this.store.chapterStats(this.latest.chapter) : null,
       compositor: this.compositor?.stats() ?? null,
+      render: { ...this.timing },
     };
+  }
+
+  /** Start the render timing over (npm run perf times a scrub on its own). */
+  resetTiming() {
+    this.timing = { frames: 0, lastMs: 0, meanMs: 0, maxMs: 0 };
+  }
+
+  // ---------- test and HUD aids (window.homewardStage, with ?hud=1 or ?test=1) ----------
+
+  /** Hold the film at progress p (null: follow the scroll again), optionally pretending a speed in vh/s (?p=, ?v=). */
+  holdAt(p: number | null, v: number | null = null) {
+    this.params = { ...this.params, p: p === null ? null : Math.min(1, Math.max(0, p)), join: null, t: null, v };
+    this.hold();
+    this.wake();
+  }
+
+  /** Hold inside the join out of a chapter at join time t, both ends drawn through the join (?join=, ?t=, ?v=). */
+  holdJoin(chapterId: string, t: number, v: number | null = null): boolean {
+    if (!joinWindow(chapterId, this.story)) return false;
+    this.params = { ...this.params, p: null, join: chapterId, t: Math.min(1, Math.max(0, t)), v };
+    this.hold();
+    this.wake();
+    return true;
+  }
+
+  /**
+   * Whether the canvas shows the complete picture for the held position: the exact frames on both sides
+   * of any join, the clock and the page flips at rest, the breath still (?clock=) and the overlays loaded.
+   */
+  settled(): boolean {
+    // Following the scroll, the picture is complete only for the scroll position the last render read
+    // (a scroll whose event has not been handled yet makes it stale).
+    if (this.clock.frozen === null && this.canvas && Math.min(1, Math.max(0, this.readScroll())) !== this.clock.target) return false;
+    return this.complete;
+  }
+
+  /** Why the picture is or is not settled: the parts of the last render's check, and the loads in flight. */
+  settleReport() {
+    const f = this.latest;
+    const pick = (p: FramePick | null | undefined) => (p ? `${p.a.key}${p.b !== p.a ? ` + ${p.b.key}` : ""}${p.exact ? "" : " (stand-in)"}` : "none");
+    return {
+      settled: this.settled(),
+      ...this.completeParts,
+      running: this.running,
+      p: f?.p ?? null,
+      chapter: f?.chapter.id ?? null,
+      shown: pick(f?.shown),
+      join: f?.join ? { kind: f.join.kind, t: f.join.t, out: pick(f.join.out), into: pick(f.join.into) } : null,
+      store: this.store?.stats() ?? null,
+    };
+  }
+
+  /** Whether the render loop is running (it stops whenever nothing moves). */
+  get running(): boolean {
+    return this.raf !== 0;
+  }
+
+  /** The canvas read back after a fresh draw of the last scene: RGBA, rows top first, device pixels. */
+  capture(): Capture | null {
+    return this.compositor?.capture() ?? null;
+  }
+
+  /** The chapters and join windows of the story being played, in p. */
+  timeline() {
+    const s = this.story;
+    return {
+      totalVh: s.totalVh,
+      filmEndP: s.filmEndP,
+      chapters: s.chapters.map((c) => ({ id: c.id, index: c.index, title: c.title, startP: c.startP, endP: c.endP, joinOut: c.joinOut })),
+      joins: s.chapters.flatMap((c) => {
+        const w = joinWindow(c, s);
+        return w ? [{ from: w.from.id, to: w.to.id, type: w.type, startP: w.startP, boundaryP: w.boundaryP, endP: w.endP }] : [];
+      }),
+    };
+  }
+
+  /**
+   * Where a chapter's focal point and anchors land on screen at this viewport, in CSS pixels, through the
+   * same cover fit the compositor draws its frames with.
+   */
+  anchors(chapterId: string): AnchorsOnScreen | null {
+    const placed = this.fitOf(chapterId);
+    if (!placed) return null;
+    const { chapter, fit, w, h } = placed;
+    const px = (pt: Point): Point => ({ x: pt.x * w, y: pt.y * h });
+    const { pupil, photoRect } = chapter.anchors;
+    const rect = photoRect ? rectOnScreen(photoRect, fit) : null;
+    return {
+      width: w,
+      height: h,
+      focal: px(frameToScreen(focalFor(chapter, w, h), fit)),
+      pupil: pupil ? px(frameToScreen(pupil, fit)) : null,
+      photoRect: rect ? { x: rect.x * w, y: rect.y * h, w: rect.w * w, h: rect.h * h } : null,
+    };
+  }
+
+  /** Any point of a chapter's frame (0..1 frame coordinates) on screen, in CSS pixels. */
+  toScreen(chapterId: string, point: Point): Point | null {
+    const placed = this.fitOf(chapterId);
+    if (!placed) return null;
+    const s = frameToScreen(point, placed.fit);
+    return { x: s.x * placed.w, y: s.y * placed.h };
+  }
+
+  /** A chapter's cover fit at the current viewport (CSS pixels), as the compositor places its frames. */
+  private fitOf(chapterId: string) {
+    const chapter = this.story.chapters.find((c) => c.id === chapterId);
+    const store = this.store;
+    if (!chapter || !store) return null;
+    const { width, height } = store.frameSize(chapter);
+    const w = this.cssWidth;
+    const h = this.cssHeight;
+    return { chapter, w, h, fit: coverFit(w, h, width, height, focalFor(chapter, w, h)) };
   }
 
   /** Make sure a frame is rendered soon (scroll, resize, a frame arrived, a listener joined). */
   wake = () => {
+    // Something changed: the picture is not known to be complete until that render has run.
+    this.complete = false;
     if (this.raf || !this.canvas) return;
     if (this.resting) {
       // Time the first step from now, not from when the loop last stopped.
@@ -259,10 +421,11 @@ export class StageEngine {
 
     const store = new FrameStore(this.wake);
     if (this.params.memMb) store.setCap(this.params.memMb * MB);
+    store.seed(this.manifests);
     this.store = store;
     this.compositor = createCompositor(canvas, this.wake);
     this.overlays = Object.fromEntries((Object.keys(tune.overlays) as OverlayName[]).map((name) => [name, createOverlay(name, this.wake)]));
-    if (this.params.hud) window.homewardStage = this;
+    if (this.params.hud || this.params.test) window.homewardStage = this;
 
     const cleanups: (() => void)[] = [];
     const on = <K extends keyof WindowEventMap>(type: K, fn: (e: WindowEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -338,8 +501,16 @@ export class StageEngine {
     if (!canvas || !store) return;
     this.cssWidth = canvas.clientWidth || window.innerWidth;
     this.cssHeight = canvas.clientHeight || window.innerHeight;
-    const { tier, reason } = chooseTier(this.cssWidth, store.capBytes, this.params.tier);
+    const { tier, reason } = chooseTier(this.cssWidth, this.cssHeight, store.capBytes, this.params.tier);
     store.setTier(tier, reason);
+  }
+
+  /** The join a ?join= hold names, drawn at exactly its t, both ends included. */
+  private heldJoin(): { window: JoinWindow; t: number } | null {
+    const { join, t } = this.params;
+    if (!join || this.clock.frozen === null) return null;
+    const w = joinWindow(join, this.story);
+    return w ? { window: w, t: t ?? 0.5 } : null;
   }
 
   /** Raw progress of the window's scroll position over the whole page, 0..1. */
@@ -361,7 +532,8 @@ export class StageEngine {
     const a = this.layer(pick.a);
     const chapter = this.story.chapters.find((c) => c.clip === pick.a.clip);
     const look = chapter ? pictureLook(chapter, localTOf(chapter, this.p, this.story), this.look, a) : null;
-    if (look?.breathing) this.breathing = true;
+    // A breath on a held clock (?clock=) stands still, so it needs no more frames.
+    if (look?.breathing && this.params.clock === null) this.breathing = true;
     return { a, b: this.layer(pick.b), mix: pick.mix, look };
   }
 
@@ -382,6 +554,7 @@ export class StageEngine {
       else overlay.setPlaying(visible);
       const source = visible ? overlay.source() : null;
       if (visible && overlay.polling) this.breathing = true; // no frame callbacks: pull a frame every tick
+      if (visible && !overlay.settled) this.overlaysPending = true;
       if (source && state) scene.push({ name, source, opacity: state.opacity });
     }
     return scene;
@@ -413,6 +586,7 @@ export class StageEngine {
     const canvas = this.canvas;
     const store = this.store;
     if (!canvas || !store) return;
+    const started = performance.now();
 
     const dt = Math.max(0, (now - this.last) / 1000);
     this.last = now;
@@ -428,7 +602,7 @@ export class StageEngine {
     else if (velocity < 0) this.direction = -1;
 
     // 2. The canvas size, at a capped device pixel ratio.
-    const phone = isPhoneViewport(this.cssWidth);
+    const phone = isPhoneViewport(this.cssWidth, this.cssHeight);
     const dpr = Math.min(window.devicePixelRatio || 1, phone ? tune.dprCapPhone : tune.dprCapDesktop);
     this.compositor?.resize(Math.max(1, Math.round(this.cssWidth * dpr)), Math.max(1, Math.round(this.cssHeight * dpr)));
 
@@ -439,15 +613,18 @@ export class StageEngine {
     const chapter = chapterAt(p, story);
     this.p = p;
     this.breathing = false;
+    this.overlaysPending = false;
     const calm = breathCalm(velocity, story.totalVh);
     this.look = { width: this.cssWidth, height: this.cssHeight, reducedMotion: this.clock.reducedMotion, now: this.params.clock ?? now, calm };
     const count = store.countFor(chapter);
     const t = localT(p, story);
-    const active = joinAt(p, story);
-    if (this.stepFlips(store, p, dt, chapter, active?.window ?? null)) more = true;
+    const active = this.heldJoin() ?? joinAt(p, story);
+    const flipping = this.stepFlips(store, p, dt, chapter, active?.window ?? null);
+    if (flipping) more = true;
     const shown = store.pickChapter(chapter, p, story, this.flipAt.get(chapter.id));
     let join: StageJoin | null = null;
     let scene: Scene | null = this.picture(shown);
+    let exact = !!shown?.exact;
     if (active) {
       const { window: w } = active;
       const out = store.pickChapter(w.from, p, story, this.flipAt.get(w.from.id));
@@ -457,19 +634,36 @@ export class StageEngine {
       join = { kind, window: w, t: active.t, speed, out, into };
       const outPicture = this.picture(out);
       const intoPicture = this.picture(into);
+      exact = false;
       if (outPicture && intoPicture) {
         scene = {
           ...outPicture,
           join: { kind, t: active.t, speed, px: dpr, into: intoPicture, pupil: w.from.anchors.pupil, photoRect: w.from.anchors.photoRect },
         };
+        exact = !!out?.exact && !!into?.exact;
       }
     }
     const overlays = overlaysAt(p, story, this.clock.reducedMotion);
     const overlayScene = this.overlayScene(overlays, chapter.index);
     if (scene) scene = { ...scene, overlays: overlayScene };
+    let drew = false;
     if (this.compositor) {
-      if (this.compositor.draw(scene) && !canvas.hasAttribute("data-ready")) canvas.setAttribute("data-ready", "");
+      drew = this.compositor.draw(scene);
+      if (drew && !canvas.hasAttribute("data-ready")) {
+        canvas.setAttribute("data-ready", "");
+        markTiming("homeward:first-frame");
+      }
     }
+    this.completeParts = {
+      drew: drew && scene !== null,
+      exact,
+      clock: this.clock.settled,
+      flipping,
+      breathing: this.breathing,
+      overlaysPending: this.overlaysPending,
+    };
+    this.complete =
+      drew && scene !== null && exact && this.clock.settled && !flipping && !this.breathing && !this.overlaysPending;
 
     // 4. Everyone else reads the same state.
     const state: StageFrame = {
@@ -508,5 +702,12 @@ export class StageEngine {
     if (this.breathing) more = true;
     if (more) this.raf = requestAnimationFrame(this.render);
     else this.resting = true;
+
+    const ms = performance.now() - started;
+    const timing = this.timing;
+    timing.frames++;
+    timing.lastMs = ms;
+    timing.maxMs = Math.max(timing.maxMs, ms);
+    timing.meanMs += (ms - timing.meanMs) / timing.frames;
   };
 }

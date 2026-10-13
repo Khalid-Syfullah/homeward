@@ -63,7 +63,10 @@ export interface OverlayScene {
 /** A join in progress: the incoming chapter's picture and the numbers that place the transition. */
 export interface JoinScene {
   kind: JoinKind;
-  /** Join time, 0..1 across the window (never exactly 0 or 1: there the plain frame is drawn). */
+  /**
+   * Join time, 0..1 across the window. Scrolling never reaches exactly 0 or 1 (there the plain frame is
+   * drawn); a held join can (?join=&t=0), and then the join draws the plain frame to the bit.
+   */
   t: number;
   /** Absolute scroll speed, 0..1 (joins.ts). */
   speed: number;
@@ -89,6 +92,13 @@ export interface CompositorStats {
   height: number;
 }
 
+/** The canvas read back: RGBA bytes, rows top first, in device pixels. */
+export interface Capture {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
 export interface Compositor {
   readonly kind: "webgl" | "2d";
   /** Size the drawing buffer in device pixels (clears it, so draw in the same frame). */
@@ -98,6 +108,11 @@ export interface Compositor {
    * a picture afterwards, false when there was nothing to draw (or the context is lost).
    */
   draw(scene: Scene | null): boolean;
+  /**
+   * Redraw the last scene and read the canvas back (tests and the HUD). The drawing buffer is not kept
+   * between frames, so the read follows a fresh draw in the same task. Null before the first picture.
+   */
+  capture(): Capture | null;
   stats(): CompositorStats;
   dispose(): void;
 }
@@ -829,6 +844,21 @@ class WebGLCompositor implements Compositor {
     return true;
   }
 
+  capture(): Capture | null {
+    if (!this.last) return null;
+    this.signature = "";
+    if (!this.draw(null)) return null;
+    const gl = this.gl;
+    const { width, height } = this.canvas;
+    const raw = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+    // WebGL reads bottom row first.
+    const row = width * 4;
+    const data = new Uint8Array(raw.length);
+    for (let y = 0; y < height; y++) data.set(raw.subarray((height - 1 - y) * row, (height - y) * row), y * row);
+    return { width, height, data };
+  }
+
   stats(): CompositorStats {
     let textureBytes = 0;
     for (const t of this.textures.values()) textureBytes += t.bytes;
@@ -1021,6 +1051,14 @@ class Canvas2DCompositor implements Compositor {
     }
     this.signature = signature;
     return true;
+  }
+
+  capture(): Capture | null {
+    // The 2D canvas keeps what it drew; nothing to redraw.
+    if (this.signature === "") return null;
+    const { width, height } = this.canvas;
+    const image = this.ctx.getImageData(0, 0, width, height);
+    return { width, height, data: new Uint8Array(image.data.buffer.slice(0)) };
   }
 
   stats(): CompositorStats {

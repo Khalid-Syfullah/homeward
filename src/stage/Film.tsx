@@ -11,13 +11,15 @@ import styles from "./Film.module.css";
 interface FilmProps {
   /** Optional clips the server found no frames for. */
   initialMissing: string[];
+  /** Every clip's manifest as the server read it (src/content/frames.server.ts), by clip; null for no frames. */
+  manifests: Readonly<Record<string, unknown>>;
 }
 
 /**
  * The page shell: a tall scroll track (the film's scroll length plus the end screen) holding one
  * sticky full-viewport stage. Everything inside the stage reads the same progress p.
  */
-export function Film({ initialMissing }: FilmProps) {
+export function Film({ initialMissing, manifests }: FilmProps) {
   const [missing, setMissing] = useState<string[]>(initialMissing);
   const story = useMemo(() => resolveStory((clip) => !missing.includes(clip)), [missing]);
 
@@ -42,7 +44,7 @@ export function Film({ initialMissing }: FilmProps) {
   return (
     <main id="top" data-film className={styles.track} style={{ height: `calc(${story.totalVh}vh + 100vh)` }}>
       <div className={styles.stage}>
-        <Stage story={story}>
+        <Stage story={story} manifests={manifests}>
           <Captions story={story} />
           <EndPanel />
           <Chrome story={story} />

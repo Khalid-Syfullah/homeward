@@ -11,3 +11,55 @@
 .canvas[data-ready] {
   visibility: visible;
 }
+
+/* The loading frame (Stage.tsx): the opening frame, painted from the HTML before any script runs and
+   gone once the canvas has drawn. It is placed by the canvas's own cover fit (src/stage/fit.ts): the
+   frame covers the stage, then slides so its focal point sits as near the centre as the crop allows. */
+.loading {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  pointer-events: none;
+}
+
+.canvas[data-ready] ~ .loading {
+  display: none;
+}
+
+/* The first chapter's vignette at its first instant, as the canvas draws it (looks.ts vignetteGradient). */
+.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--vignette, none);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading::after {
+    background: var(--vignette-reduced, none);
+  }
+}
+
+.poster {
+  --fx: var(--fx-desktop);
+  --fy: var(--fy-desktop);
+  /* The size the frame is drawn at, covering the stage. */
+  --w: max(100cqw, 100cqh * var(--aspect));
+  --h: max(100cqh, 100cqw / var(--aspect));
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  object-position: clamp(100cqw - var(--w), 50cqw - var(--fx) * var(--w), 0px) clamp(100cqh - var(--h), 50cqh - var(--fy) * var(--h), 0px);
+}
+
+/* Phones and portrait screens use the phone focal point, as focalFor does (tune.phoneMaxWidth, phoneMaxHeight). */
+@media (max-width: 768px), (max-height: 500px), (orientation: portrait) {
+  .poster {
+    --fx: var(--fx-phone);
+    --fy: var(--fy-phone);
+  }
+}

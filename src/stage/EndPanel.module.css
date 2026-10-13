@@ -86,7 +86,7 @@
   }
 }
 
-@media (max-width: 768px), (orientation: portrait) {
+@media (max-width: 768px), (orientation: portrait), (max-height: 500px) {
   .panel {
     left: 1.25rem;
     right: 1.25rem;
@@ -102,5 +102,22 @@
 
   .line {
     font-size: clamp(1.05rem, 4.4vw, 1.3rem);
+  }
+}
+
+/* A phone held sideways: a shorter panel, lower down. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .panel {
+    bottom: max(1rem, calc(env(safe-area-inset-bottom) + 3vh));
+    padding: 1rem 1.25rem;
+  }
+
+  .heading {
+    font-size: clamp(1.5rem, 8vh, 2rem);
+  }
+
+  .line {
+    margin-bottom: 0.8rem;
+    font-size: clamp(1rem, 4.6vh, 1.2rem);
   }
 }

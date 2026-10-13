@@ -36,11 +36,13 @@ Without the skill, paste `prompts/01-…md`, then `02-…`, and so on into fresh
 | `docs/ARCHITECTURE.md` | How the site plays the clips |
 | `docs/COPY.md` | The placeholder words on screen |
 | `docs/CHECKS.md` | How to judge each clip, what to do when it fails |
+| `docs/PERF.md` | The performance budget, measured (`npm run perf`), and the browser tests (`npm test`) |
 | `art/prompts.json` | Every asset prompt, the four style blocks, settings. The single source |
 | `prompts/` | The eight website phases, their commit messages, `models.conf` |
 | `tools/` | `art.mjs` (status, prompt, sheet, docs), `art-video.mjs` (Veo clips, takes, chaining), `shared-rules.mjs` |
 | `.claude/` | The `build-homeward` skill and its three phase agents |
 | `scripts/`, `src/` | Created by the site phases |
+| `tests/`, `playwright.config.ts` | Browser tests: scrubbing, joins, anchors, phones, reduced motion, keyboard (`npm test`) |
 
 ## Cost and models
 

@@ -109,7 +109,7 @@ function readout(f: StageFrame, s: StageStats, fps: number | null, anchor: strin
   lines.push(`anchor    ${anchor}`);
   if (store) {
     lines.push(
-      `tier      ${store.tier} (${store.tierReason})   canvas ${gpu ? `${gpu.width}x${gpu.height} ${gpu.kind}` : "none"} @${fixed(f.dpr, 2)}x`,
+      `tier      ${store.tier} (${store.tierReason})${store.firstPaint ? "" : "   FIRST PAINT (narrow tier first)"}   canvas ${gpu ? `${gpu.width}x${gpu.height} ${gpu.kind}` : "none"} @${fixed(f.dpr, 2)}x`,
       `decoded   ${store.frames} frames ${mb(store.decodedBytes)} / ${mb(store.capBytes)} MB   plan ${store.planned}`,
       `encoded   ${store.encoded} frames ${mb(store.encodedBytes)} / ${mb(store.encodedCapBytes)} MB   plan ${store.prefetch}`,
       `gpu       ${gpu ? `${gpu.textures} textures ${mb(gpu.textureBytes)} MB` : "none"}`,
@@ -117,7 +117,9 @@ function readout(f: StageFrame, s: StageStats, fps: number | null, anchor: strin
     );
   }
   if (ch) lines.push(`this clip ${ch.decoded}/${ch.count} decoded   ${ch.encoded}/${ch.count} encoded   ${ch.manifest} frames @${ch.tier}`);
-  lines.push(`fps       ${fps === null ? "measuring" : Math.round(fps)}`);
+  lines.push(
+    `fps       ${fps === null ? "measuring" : Math.round(fps)}   render ${fixed(s.render.meanMs, 2)} ms mean, ${fixed(s.render.maxMs, 1)} max over ${s.render.frames} frames`,
+  );
   return lines.join("\n");
 }
 

@@ -29,7 +29,7 @@ The compositor is the only box that draws. The other boxes prepare what it needs
 
 - Stack: Next.js App Router, TypeScript, raw WebGL 1 and CSS modules, with no scroll or animation libraries.
 - Smoothness: 570 stored frames feel continuous because the compositor blends the two frames either side of the fractional index.
-- Loading: the current chapter and the next two, nearest first; the 768 tier on phones; first paint is the poster plus 24 frames, under 1.5 MB.
+- Loading: the current chapter and the next two, nearest first; the 768 tier on phones; first paint is the poster plus 24 frames, under 1.5 MB. The poster is the film's opening frame, painted from the HTML before any script runs, and the 24 frames come at the 768 tier (docs/PERF.md has the measurements).
 - Joins: push, portal and rect last 12 frames each, are pure functions of their own time t, and are exactly zero outside it. The pupil and photograph positions live in story.ts as anchors.
 - Accessibility: reduced motion removes smoothing lag, overlays and breathing and turns every join into a cross-dissolve; with JavaScript off, the poster and the ten captions remain.
 - Hosting: static files behind any host; give public/frames long immutable cache headers and rename a clip's folder to bust it.

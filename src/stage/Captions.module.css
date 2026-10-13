@@ -1,6 +1,6 @@
 /* The caption column: the left of the screen on desktop, so it stays out of the subject's centre
-   third; the lower third on phones and portrait screens. Every caption sits in the same place, and
-   their windows never overlap. */
+   third; the lower third on phones and portrait screens (tune.phoneMaxWidth and tune.phoneMaxHeight).
+   Every caption sits in the same place, and their windows never overlap. */
 .column {
   position: absolute;
   inset: 0;
@@ -54,7 +54,7 @@
   text-shadow: 0 1px 12px color-mix(in srgb, var(--c-ink) 55%, transparent);
 }
 
-@media (max-width: 768px), (orientation: portrait) {
+@media (max-width: 768px), (orientation: portrait), (max-height: 500px) {
   .caption {
     left: 1.25rem;
     right: 1.25rem;
@@ -79,5 +79,21 @@
 
   .line {
     font-size: clamp(1.05rem, 4.4vw, 1.3rem);
+  }
+}
+
+/* A phone held sideways: little height, so the type follows the height and sits lower, staying in the
+   lower third. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .caption {
+    bottom: max(1.25rem, calc(env(safe-area-inset-bottom) + 4vh));
+  }
+
+  .title {
+    font-size: clamp(1.5rem, 8vh, 2rem);
+  }
+
+  .line {
+    font-size: clamp(1rem, 4.6vh, 1.2rem);
   }
 }
