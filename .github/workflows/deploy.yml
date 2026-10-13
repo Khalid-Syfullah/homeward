@@ -1,0 +1,99 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC -> AWS, no long-lived keys
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never interrupt a deploy that is already running
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to production
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://production.khalidsyfullah.com
+    env:
+      AWS_REGION: ap-southeast-2
+      INSTANCE_ID: i-06b375f9360b2a8b4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN || 'arn:aws:iam::312605974340:role/orange-github-deploy' }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: homeward-deploy-${{ github.run_id }}
+
+      - name: Deploy via AWS Systems Manager
+        run: |
+          set -euo pipefail
+
+          # The deploy script ships with the repo, so the server never holds a stale copy.
+          SCRIPT_B64="$(base64 -w0 deploy/homeward-deploy.sh)"
+          REMOTE="sudo -u ubuntu -H bash -lc 'echo ${SCRIPT_B64} | base64 -d > /tmp/homeward-deploy.sh && REPO_URL=https://github.com/${GITHUB_REPOSITORY}.git bash /tmp/homeward-deploy.sh ${GITHUB_SHA}'"
+          PARAMS="$(jq -nc --arg c "$REMOTE" '{commands:[$c],executionTimeout:["1200"]}')"
+
+          CMD_ID="$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "homeward deploy ${GITHUB_SHA::7}" \
+            --parameters "$PARAMS" \
+            --timeout-seconds 1200 \
+            --query 'Command.CommandId' --output text)"
+          echo "SSM command: $CMD_ID"
+
+          STATUS=Pending
+          for _ in $(seq 1 240); do
+            STATUS="$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut|Cancelling) break ;;
+            esac
+            sleep 5
+          done
+
+          echo "::group::Server output"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query 'StandardOutputContent' --output text
+          echo "::endgroup::"
+
+          ERR="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query 'StandardErrorContent' --output text)"
+          if [ -n "$ERR" ] && [ "$ERR" != "None" ]; then
+            echo "::group::Server stderr"
+            echo "$ERR"
+            echo "::endgroup::"
+          fi
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::Deploy finished with status: $STATUS"
+            exit 1
+          fi
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          BASE=https://production.khalidsyfullah.com
+          curl -fsS --retry 5 --retry-delay 3 --retry-all-errors \
+            -o /dev/null -w "page HTTP %{http_code}\n" "$BASE/"
+          # Real art, not placeholders: the first clip's manifest must say placeholder false.
+          curl -fsS --retry 5 --retry-delay 3 --retry-all-errors \
+            "$BASE/frames/c01-follow/manifest.json" | grep -Eq '"placeholder": *false'
+          curl -fsS -o /dev/null -w "frame HTTP %{http_code}\n" "$BASE/frames/c01-follow/1440/f_001.webp"
+          curl -fsS -o /dev/null -w "audio HTTP %{http_code}\n" "$BASE/audio/c01.m4a"

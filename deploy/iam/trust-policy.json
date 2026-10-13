@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::312605974340:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": [
+            "repo:Khalid-Syfullah@8851114/orange-story@1412619014:environment:production",
+            "repo:Khalid-Syfullah/orange-story:environment:production",
+            "repo:Khalid-Syfullah@8851114/homeward@1415747648:environment:production",
+            "repo:Khalid-Syfullah/homeward:environment:production"
+          ]
+        }
+      }
+    }
+  ]
+}
