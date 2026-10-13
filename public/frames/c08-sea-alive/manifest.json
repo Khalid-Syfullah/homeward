@@ -1,0 +1,32 @@
+{
+  "clip": "c08-sea-alive",
+  "placeholder": false,
+  "fingerprint": "00cfce96cce13b0b8a2d71287661e23e72bed49a",
+  "frames": 60,
+  "tiers": {
+    "768": {
+      "count": 60,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1823614,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 60,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 4597530,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c08-sea-alive.mp4",
+    "sha1": "a6afb1facd61ee3e73b687f98eaacc656b913b26",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
