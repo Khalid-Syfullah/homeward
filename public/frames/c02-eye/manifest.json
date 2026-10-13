@@ -1,0 +1,32 @@
+{
+  "clip": "c02-eye",
+  "placeholder": false,
+  "fingerprint": "40ca54d5373e7472c100ae93b74674c57ae054a8",
+  "frames": 42,
+  "tiers": {
+    "768": {
+      "count": 42,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 872274,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 42,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 2513386,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c02-eye.mp4",
+    "sha1": "868a99eca2f287e8523d769ebaf892da4d3670bb",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
