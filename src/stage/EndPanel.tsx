@@ -50,7 +50,7 @@ export function EndPanel() {
   };
 
   return (
-    <section ref={ref} className={styles.panel} aria-label="End">
+    <section ref={ref} id="end" tabIndex={-1} className={styles.panel} aria-label="End">
       <h1 className={styles.heading}>{site.end.heading}</h1>
       <p className={styles.line}>{site.end.line}</p>
       <div className={styles.actions}>

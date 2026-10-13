@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "predev": "node scripts/placeholders.mjs && node scripts/overlays.mjs",
-    "prebuild": "node scripts/overlays.mjs",
+    "predev": "node scripts/placeholders.mjs && node scripts/overlays.mjs && node scripts/audio.mjs",
+    "prebuild": "node scripts/overlays.mjs && node scripts/audio.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -13,7 +13,8 @@
     "placeholders": "node scripts/placeholders.mjs",
     "art:import": "node scripts/art-import.mjs",
     "art:check": "node scripts/art-check.mjs",
-    "overlays": "node scripts/overlays.mjs"
+    "overlays": "node scripts/overlays.mjs",
+    "audio": "node scripts/audio.mjs"
   },
   "dependencies": {
     "next": "16.4.0",

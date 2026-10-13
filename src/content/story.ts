@@ -263,6 +263,43 @@ export const tune = {
     risePx: 10,
   },
   /**
+   * Sound (src/stage/sound.ts). One ambience loop per chapter (ambience id, public/audio/<id>.m4a with
+   * an .ogg fallback) and a music bed under everything, mixed in WebAudio. The chapter loop that
+   * chapterAt(p) names crossfades in over crossfadeS while the others fade out; the master gain starts
+   * at zero and is ramped to volume when the visitor turns sound on (sound is off by default and only
+   * ever starts from a click or key press), and back to zero when it is turned off. A missing file is
+   * skipped silently.
+   */
+  sound: {
+    /** Master volume when sound is on (0..1). */
+    volume: 0.6,
+    /** Crossfade between chapter loops, in seconds. */
+    crossfadeS: 1.2,
+    /** Master gain ramp when sound is turned on or off, and when the tab is hidden or shown, in seconds. */
+    masterRampS: 0.4,
+    /** Level of the music bed and of the chapter loops under the master gain (0..1). */
+    bedGain: 0.32,
+    ambienceGain: 1,
+    /** Formats to try, in order of preference (the first one the browser can play wins). */
+    formats: ["m4a", "ogg"] as const,
+    /** Chapters kept loaded ahead of the current one (their loops are fetched, not started). */
+    preloadAhead: 1,
+    /** A loop that has faded out is stopped after this many extra seconds. */
+    stopAfterS: 0.3,
+  },
+  /**
+   * Keyboard and rail navigation (src/stage/nav.ts). A chapter stop is the scroll position where the
+   * chapter's caption is fully in (captionTiming.ts), which is also clear of the join before it. The
+   * first chapter's stop is the top of the page.
+   */
+  nav: {
+    /** Scrolled less than this far (in vh) past a stop still counts as being at it, so Up goes to the one before. */
+    atStopVh: 2,
+    /** Rail: height of the rail, in viewport heights, and the largest it grows to in rem. */
+    railVh: 46,
+    railMaxRem: 26,
+  },
+  /**
    * The three joins (src/stage/joins.ts). Every join is a pure function of its time t (0..1 over
    * the join window) and is exactly the outgoing picture at t = 0 and the incoming one at t = 1;
    * the terms marked "at full speed" grow with the absolute scroll velocity and are zero at rest.
@@ -486,6 +523,16 @@ export const site = {
   wordmark: "Homeward",
   pageTitle: "Homeward, a scroll film",
   description: "[one sentence for search and sharing]",
+  /** The first paint and the no-JavaScript picture: the valley (K05), which c04 opens on. */
+  poster: { src: "/frames/c04-descent/poster.webp", alt: "A green hill valley at golden hour, a single house at the end of a winding path." },
+  /** Names for the chrome and the accessibility tree. */
+  a11y: {
+    wordmark: "Homeward, back to the top",
+    rail: "Chapters",
+    announce: "Chapter {n} of {total}: {title}",
+    film: "{title}. {line}",
+    noScript: "Homeward is a film that plays as you scroll. With scripts off, here is the story as a list.",
+  },
   end: {
     heading: "Homeward",
     line: "[one sentence about you or the project]",
@@ -679,6 +726,14 @@ export function framePath(clip: string, tier: number, index: number): string {
 export function overlayPath(name: OverlayName): string {
   return `/overlays/${tune.overlays[name].file}`;
 }
+
+/** Where a sound file is served from (copied from art/source/audio/ by npm run audio). */
+export function audioPath(id: string, format: (typeof tune.sound.formats)[number]): string {
+  return `/audio/${id}.${format}`;
+}
+
+/** The id of the music bed that plays under every chapter (art/source/audio/bed.m4a). */
+export const bedAmbience = "bed";
 
 export function manifestPath(clip: string): string {
   return `/frames/${clip}/manifest.json`;

@@ -42,6 +42,9 @@ export function Captions({ story }: { story: Story }) {
       const o = window * eased;
       const text = o === 0 ? "0" : o.toFixed(4);
       if (el.style.opacity !== text) el.style.opacity = text;
+      // A caption that is not showing is out of the accessibility tree (the canvas label names the chapter).
+      const hidden = o === 0 ? "true" : "false";
+      if (el.getAttribute("aria-hidden") !== hidden) el.setAttribute("aria-hidden", hidden);
       const rise = f.reducedMotion || o === 0 ? "" : `translateY(${((1 - o) * c.risePx).toFixed(2)}px)`;
       if (el.style.transform !== rise) el.style.transform = rise;
     }
@@ -61,6 +64,7 @@ export function Captions({ story }: { story: Story }) {
             else items.current.delete(c.id);
           }}
           className={styles.caption}
+          aria-hidden="true"
           data-chapter={c.id}
         >
           <h2 className={styles.title}>{c.caption.title}</h2>

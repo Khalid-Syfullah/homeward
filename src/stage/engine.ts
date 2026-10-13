@@ -166,6 +166,8 @@ declare global {
   interface Window {
     /** The stage engine, exposed with ?hud=1 for debugging and browser tests. */
     homewardStage?: StageEngine;
+    /** The sound engine, exposed with ?hud=1 (window.homewardSound.stats()). */
+    homewardSound?: import("./sound").SoundEngine;
   }
 }
 

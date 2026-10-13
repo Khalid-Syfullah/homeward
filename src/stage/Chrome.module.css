@@ -1,0 +1,311 @@
+/* The chrome: skip link, wordmark, chapter rail, sound toggle and progress line. All of it is paper on
+   a soft ink wash, so it reads over any picture, and none of it moves under reduced motion. */
+.chrome {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  font-family: var(--font-ui);
+  color: var(--c-paper);
+}
+
+.chrome a,
+.chrome button {
+  pointer-events: auto;
+}
+
+/* Every control shows a clear focus ring: brass, with an ink halo for contrast on pale pictures. */
+.chrome :focus-visible {
+  outline: 2px solid var(--c-brass);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--c-ink) 70%, transparent);
+}
+
+/* Skip link: first in the tab order, out of sight until it has focus. */
+.skip {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 10;
+  padding: 0.6rem 1.2rem;
+  transform: translate(-50%, -300%);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--c-ink);
+  text-decoration: none;
+  background: var(--c-paper);
+  border-radius: 999px;
+}
+
+.skip:focus,
+.skip:focus-visible {
+  transform: translate(-50%, 0);
+}
+
+.header {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  left: clamp(1.25rem, 5vw, 5rem);
+}
+
+.wordmark {
+  display: inline-block;
+  padding: 0.25rem 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--c-paper);
+  text-decoration: none;
+  text-shadow: 0 1px 12px color-mix(in srgb, var(--c-ink) 60%, transparent);
+}
+
+.wordmark:hover {
+  color: var(--c-brass);
+}
+
+/* The sound toggle, top right. */
+.sound {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  right: clamp(1rem, 3vw, 2.5rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem 0.5rem 0.85rem;
+  appearance: none;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-paper);
+  background: color-mix(in srgb, var(--c-ink) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-paper) 45%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.sound:hover {
+  background: color-mix(in srgb, var(--c-ink) 60%, transparent);
+  border-color: var(--c-paper);
+}
+
+.bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 0.8rem;
+}
+
+.bars i {
+  display: block;
+  width: 2px;
+  height: 30%;
+  background: currentColor;
+  border-radius: 1px;
+  opacity: 0.6;
+  transform-origin: bottom;
+}
+
+.sound[data-on] .bars i {
+  height: 100%;
+  opacity: 1;
+  animation: bar 1.4s ease-in-out infinite;
+}
+
+.sound[data-on] .bars i:nth-child(2) {
+  animation-delay: -0.5s;
+}
+
+.sound[data-on] .bars i:nth-child(3) {
+  animation-delay: -0.9s;
+}
+
+@keyframes bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* The chapter rail, left, vertically centred. */
+.rail {
+  position: absolute;
+  top: 50%;
+  left: clamp(0.25rem, 1.4vw, 1.25rem);
+  width: 28px;
+  height: min(var(--rail-vh), var(--rail-max));
+  transform: translateY(-50%);
+}
+
+.track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--c-paper) 38%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--c-ink) 55%, transparent);
+}
+
+.fill {
+  width: 100%;
+  height: 100%;
+  background: var(--c-brass);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+
+.ticks {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 0;
+}
+
+.tick {
+  position: absolute;
+  top: -14px;
+  left: 0;
+  display: block;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  appearance: none;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  background: color-mix(in srgb, var(--c-paper) 80%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-ink) 45%, transparent);
+  transform: translate(-50%, -50%);
+  transition: width 200ms ease, height 200ms ease, background-color 200ms ease;
+}
+
+.tick:hover .dot,
+.tick:focus-visible .dot {
+  background: var(--c-paper);
+}
+
+.tick[data-current] .dot {
+  width: 11px;
+  height: 11px;
+  background: var(--c-brass);
+}
+
+/* The chapter's name, on hover and on focus. */
+.label {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0.25rem);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--c-paper);
+  background: color-mix(in srgb, var(--c-ink) 78%, transparent);
+  border-radius: 3px;
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.tick:hover .label,
+.tick:focus-visible .label {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+/* The thin progress line along the top edge. */
+.line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--c-ink) 18%, transparent);
+}
+
+.lineFill {
+  width: 100%;
+  height: 100%;
+  background: var(--c-brass);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+/* Announcements for screen readers only. */
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 768px), (orientation: portrait) {
+  .rail {
+    left: 0.15rem;
+    width: 26px;
+  }
+
+  .tick {
+    top: -13px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .sound {
+    padding: 0.45rem 0.85rem 0.45rem 0.7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound,
+  .dot,
+  .label {
+    transition: none;
+  }
+
+  .sound[data-on] .bars i {
+    animation: none;
+    transform: none;
+  }
+
+  .label {
+    transform: translate(0, -50%);
+  }
+}

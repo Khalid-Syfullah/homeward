@@ -36,9 +36,17 @@ const tokens = Object.fromEntries(
   Object.entries(palette).map(([name, hex]) => [`--c-${name}`, hex]),
 ) as CSSProperties;
 
+const NO_SCRIPT_CSS = "[data-film]{display:none!important}[data-fallback]{display:block!important}";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable}`} style={tokens}>
+      <head>
+        {/* With scripts off the film cannot play: show the poster and the captions list instead (stage/Fallback.tsx). */}
+        <noscript>
+          <style>{NO_SCRIPT_CSS}</style>
+        </noscript>
+      </head>
       <body>{children}</body>
     </html>
   );

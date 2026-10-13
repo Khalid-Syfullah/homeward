@@ -1,0 +1,90 @@
+/* The no-JavaScript view: a single readable column on paper, the poster first, then the ten captions
+   as a numbered list. Hidden unless the layout's <noscript> rule shows it. */
+.fallback {
+  display: none;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  color: var(--c-ink);
+  background: var(--c-paper);
+  font-family: var(--font-serif);
+}
+
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.wordmark {
+  margin: 0;
+  font-size: 2.2rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.note {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.poster {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 2rem;
+  background: var(--c-valley);
+  border-radius: 3px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: chapter;
+}
+
+.item {
+  margin: 0 0 1.75rem;
+  padding-left: 2.75rem;
+  position: relative;
+  counter-increment: chapter;
+}
+
+.item::before {
+  content: counter(chapter, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--c-teak);
+}
+
+.title {
+  margin: 0 0 0.25rem;
+  font-size: 1.7rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.line {
+  margin: 0;
+  font-size: 1.25rem;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.end {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--c-ink) 25%, transparent);
+}
+
+.end a {
+  color: var(--c-ink);
+  text-underline-offset: 0.25em;
+}

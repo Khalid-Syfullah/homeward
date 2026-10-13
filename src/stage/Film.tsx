@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { chapters, manifestPath, resolveStory } from "@/content/story";
 import { Captions } from "./Captions";
+import { Chrome } from "./Chrome";
 import { EndPanel } from "./EndPanel";
 import { Stage } from "./Stage";
 import styles from "./Film.module.css";
@@ -39,11 +40,12 @@ export function Film({ initialMissing }: FilmProps) {
   }, []);
 
   return (
-    <main className={styles.track} style={{ height: `calc(${story.totalVh}vh + 100vh)` }}>
+    <main id="top" data-film className={styles.track} style={{ height: `calc(${story.totalVh}vh + 100vh)` }}>
       <div className={styles.stage}>
         <Stage story={story}>
           <Captions story={story} />
           <EndPanel />
+          <Chrome story={story} />
         </Stage>
       </div>
     </main>
