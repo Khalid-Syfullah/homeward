@@ -100,9 +100,10 @@ function readout(f: StageFrame, s: StageStats, fps: number | null, anchor: strin
         ? `${shown.a.clip} ${file(shown.a.index)}${shown.b !== shown.a ? ` + ${file(shown.b.index)} mix ${fixed(shown.mix, 3)}` : ""} @${shown.a.tier}${shown.exact ? "" : "   STAND-IN (nearest loaded)"}`
         : "nothing loaded yet"
     }`,
+    ...(f.flip !== null ? [`flip      shows frame ${fixed(f.flip, 2)}${Math.abs(f.flip - f.frame) > 0.005 ? `   chasing ${fixed(f.frame, 2)}` : "   (caught up)"}`] : []),
     ...joinLines(f),
     `look      ${f.chapter.look ? `${Object.keys(f.chapter.look).join(", ")}   calm ${fixed(f.calm, 2)}` : "none"}${f.reducedMotion ? "   (reduced motion: static)" : ""}`,
-    `overlay   ${f.overlay ? `${f.overlay.name} opacity ${fixed(f.overlay.opacity, 3)}` : "none"}`,
+    `overlays  ${f.overlays.length ? f.overlays.map((o) => `${o.name} ${fixed(o.opacity, 3)}`).join("   ") : "none"}`,
   ];
   if (!f.join && join) lines.push(`          (story: ${join.window.type} ${join.window.from.id} > ${join.window.to.id} t ${fixed(join.t, 3)})`);
   lines.push(`anchor    ${anchor}`);

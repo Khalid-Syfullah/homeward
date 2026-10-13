@@ -1,8 +1,8 @@
-import { overlayPath, type OverlayName } from "@/content/story";
+import { overlayPath, tune, type OverlayName } from "@/content/story";
 
 /**
- * A looping video overlay (the mist) as a source for the compositor. It owns one hidden <video>:
- * muted, looping, inline. It is fetched only once the story gets near the chapters that use it,
+ * Overlays as sources for the compositor: looping videos (the mist and the dust) and one still (the
+ * paper texture). A video overlay owns one hidden <video>: muted, looping, inline. It is fetched only once the story gets near the chapters that use it,
  * played only while it is visible, and paused otherwise. If the file is missing or cannot play, the
  * overlay stays "failed" and the stage carries on without it, silently.
  *
@@ -13,16 +13,38 @@ import { overlayPath, type OverlayName } from "@/content/story";
  */
 
 export interface OverlaySource {
-  video: HTMLVideoElement;
-  /** Changes when the video shows a new frame. */
+  kind: "video" | "image";
+  element: HTMLVideoElement | HTMLImageElement;
+  /** Natural size of the media in pixels. */
+  width: number;
+  height: number;
+  /** Changes when the video shows a new frame (constant for a still). */
   version: number;
+}
+
+/** What the engine needs of an overlay, whether it is a video or a still. */
+export interface Overlay {
+  readonly name: OverlayName;
+  load(): void;
+  setPlaying(want: boolean): void;
+  hold(seconds: number | null): void;
+  retry(): void;
+  readonly active: boolean;
+  readonly polling: boolean;
+  source(): OverlaySource | null;
+  dispose(): void;
+}
+
+/** The overlay of this name: a video or a still, as tune.overlays says. */
+export function createOverlay(name: OverlayName, wake: () => void): Overlay {
+  return tune.overlays[name].kind === "image" ? new ImageOverlay(name, wake) : new VideoOverlay(name, wake);
 }
 
 type VideoWithCallback = HTMLVideoElement & {
   requestVideoFrameCallback?: (callback: () => void) => number;
 };
 
-export class VideoOverlay {
+export class VideoOverlay implements Overlay {
   private video: HTMLVideoElement | null = null;
   private failed = false;
   private playing = false;
@@ -142,7 +164,7 @@ export class VideoOverlay {
     if (!this.hadFrame) return null;
     // Without frame callbacks, the playback position stands in for the frame version.
     const version = this.callbacks ? this.version : Math.round(video.currentTime * 60) + this.version;
-    return { video, version };
+    return { kind: "video", element: video, width: video.videoWidth, height: video.videoHeight, version };
   }
 
   dispose() {
@@ -157,5 +179,64 @@ export class VideoOverlay {
     video.remove();
     this.video = null;
     this.playing = false;
+  }
+}
+
+/** A still overlay (the paper texture): fetched once the story is near, shown whenever it is wanted. */
+export class ImageOverlay implements Overlay {
+  private image: HTMLImageElement | null = null;
+  private failed = false;
+
+  constructor(
+    readonly name: OverlayName,
+    private readonly wake: () => void,
+  ) {}
+
+  load() {
+    if (this.image || this.failed || typeof document === "undefined") return;
+    const image = new Image();
+    image.decoding = "async";
+    image.addEventListener("error", this.fail);
+    image.addEventListener("load", this.wake);
+    image.src = overlayPath(this.name);
+    this.image = image;
+  }
+
+  private fail = () => {
+    this.failed = true;
+    this.dispose();
+  };
+
+  /** A still has nothing to play or hold. */
+  setPlaying() {}
+  hold() {}
+
+  retry() {
+    if (!this.failed) return;
+    this.failed = false;
+    this.load();
+  }
+
+  get active(): boolean {
+    return this.image !== null && !this.failed;
+  }
+
+  get polling(): boolean {
+    return false;
+  }
+
+  source(): OverlaySource | null {
+    const image = this.image;
+    if (!image || this.failed || !image.complete || image.naturalWidth === 0) return null;
+    return { kind: "image", element: image, width: image.naturalWidth, height: image.naturalHeight, version: 1 };
+  }
+
+  dispose() {
+    const image = this.image;
+    if (!image) return;
+    image.removeEventListener("error", this.fail);
+    image.removeEventListener("load", this.wake);
+    image.removeAttribute("src");
+    this.image = null;
   }
 }

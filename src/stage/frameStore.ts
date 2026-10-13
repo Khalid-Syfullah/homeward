@@ -623,15 +623,16 @@ export class FrameStore {
    * The frames of one given chapter at p, for the two sides of a join: before the chapter starts
    * it holds its first frame, after it ends its last (story.ts localTOf). If the wanted frames are
    * missing, the chapter's own nearest loaded frame stands in, else the nearest loaded frame of all.
+   * `at` replaces the chapter's local time at p (the page flips show a smoothed, capped index).
    */
-  pickChapter(chapter: StoryChapter, p: number, story: Story): FramePick | null {
+  pickChapter(chapter: StoryChapter, p: number, story: Story, at?: number): FramePick | null {
     const manifest = this.manifests.get(chapter.clip);
     const t = now();
     let wanted = 0;
     if (manifest) {
       const tier = this.clipTier(chapter.clip);
       const count = this.tierInfo(chapter.clip, tier, chapter.frames).count;
-      const f = localTOf(chapter, p, story) * (count - 1);
+      const f = Math.min(Math.max(at ?? localTOf(chapter, p, story), 0), 1) * (count - 1);
       const i0 = Math.floor(f);
       const i1 = Math.min(i0 + 1, count - 1);
       wanted = f;

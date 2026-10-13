@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { chapters, endScreenT, manifestPath, resolveStory, site } from "@/content/story";
+import { useEffect, useMemo, useState } from "react";
+import { chapters, manifestPath, resolveStory } from "@/content/story";
 import { Captions } from "./Captions";
+import { EndPanel } from "./EndPanel";
 import { Stage } from "./Stage";
-import { useStageFrame } from "./useStage";
 import styles from "./Film.module.css";
 
 interface FilmProps {
@@ -43,23 +43,9 @@ export function Film({ initialMissing }: FilmProps) {
       <div className={styles.stage}>
         <Stage story={story}>
           <Captions story={story} />
-          <EndScreen />
+          <EndPanel />
         </Stage>
       </div>
     </main>
-  );
-}
-
-/** The end screen after the last frame; its opacity follows p through the end screen's scroll. */
-function EndScreen() {
-  const ref = useRef<HTMLElement>(null);
-  useStageFrame((f) => {
-    if (ref.current) ref.current.style.opacity = String(endScreenT(f.p, f.story));
-  });
-  return (
-    <section ref={ref} className={styles.end} aria-label="End">
-      <h1 className={styles.endHeading}>{site.end.heading}</h1>
-      <p className={styles.endLine}>{site.end.line}</p>
-    </section>
   );
 }

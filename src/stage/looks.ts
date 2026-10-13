@@ -22,8 +22,9 @@ import { coverFit, frameToScreen } from "./fit";
  *                 amplitude is scaled by "calm", which falls to zero as the scroll speeds up.
  *   vignette      a colour that closes in from the outer radius, toward the chapter's centre or its
  *                 pupil anchor.
- *   overlay       the opacity of a video overlay as a function of p: linear across the chapters that
- *                 share it, eased in over the join into the first and out over the join after the last.
+ *   overlays      the opacity of each overlay (mist, dust, paper) as a function of p: linear across the
+ *                 chapters that share it, eased in over the join into the first and out over the join
+ *                 after the last.
  *
  * A look is a function of the chapter's local time t and, for the breath only, of the clock time and
  * the scroll speed. Under reduced motion nothing moves: no zoom, drift or breath, and the vignette
@@ -156,18 +157,20 @@ export interface OverlayState {
 }
 
 /**
- * The overlay showing at p, if any. The chapters of the story that share an overlay form one group;
- * the opacity runs linearly from tune.overlays[name].from at the start of the first to .to at the end
- * of the last (in scroll, so it follows the descent), eased in over the join window into the first
- * chapter and, when the end opacity is not zero, out over the join window after the last one. Zero
- * everywhere else, exactly. Under reduced motion there is no overlay.
+ * The overlays showing at p. The chapters of the story that share an overlay form one group; the
+ * opacity runs linearly from tune.overlays[name].from at the start of the first to .to at the end
+ * of the last (in scroll), eased in over the join window into the first chapter and out over the join
+ * window after the last one (or, when the group runs to the end of the film, nothing after). Zero
+ * everywhere else, exactly, so an overlay never pops on or off; two overlays can show at once (dust
+ * and paper over the book). Under reduced motion there are no overlays.
  */
-export function overlayAt(p: number, story: Story, reducedMotion = false): OverlayState | null {
-  if (reducedMotion) return null;
-  const names = new Set<OverlayName>();
-  for (const c of story.chapters) if (c.overlay) names.add(c.overlay);
+export function overlaysAt(p: number, story: Story, reducedMotion = false): OverlayState[] {
+  if (reducedMotion) return [];
+  const names: OverlayName[] = [];
+  for (const c of story.chapters) for (const name of c.overlays ?? []) if (!names.includes(name)) names.push(name);
+  const shown: OverlayState[] = [];
   for (const name of names) {
-    const group = story.chapters.filter((c) => c.overlay === name);
+    const group = story.chapters.filter((c) => c.overlays?.includes(name));
     const first = group[0];
     const last = group[group.length - 1];
     const spec = tune.overlays[name];
@@ -178,20 +181,20 @@ export function overlayAt(p: number, story: Story, reducedMotion = false): Overl
     // Eased in over the join into the first chapter, and out over the join after the last.
     const before = first.index > 0 ? joinWindow(story.chapters[first.index - 1], story) : null;
     if (before) {
-      if (p <= before.startP) return null;
+      if (p <= before.startP) continue;
       opacity *= smoothBetween(before.startP, before.endP, p);
     } else if (vh < first.startVh) {
-      return null;
+      continue;
     }
     const after = joinWindow(last, story);
     if (after) {
-      if (p >= after.endP) return null;
+      if (p >= after.endP) continue;
       opacity *= 1 - smoothBetween(after.startP, after.endP, p);
     } else if (vh > last.endVh) {
-      return null;
+      continue;
     }
     // Inside the chapters the window terms are 1; between the window and the chapter they hold.
-    if (opacity > 0) return { name, opacity };
+    if (opacity > 0) shown.push({ name, opacity });
   }
-  return null;
+  return shown;
 }

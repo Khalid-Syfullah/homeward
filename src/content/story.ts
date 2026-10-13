@@ -76,8 +76,11 @@ export interface Look {
   vignette?: { color: PaletteName; toward: "centre" | "pupil"; from: VignetteState; to: VignetteState };
 }
 
-/** Looping video overlays, blended over the whole picture (art/source/overlays/<name>.mp4). */
-export type OverlayName = "mist";
+/**
+ * Overlays blended over the whole picture (art/source/overlays/): mist.mp4 and dust.mp4 are looping
+ * videos blended with screen, paper.webp is a tiled still blended with soft-light.
+ */
+export type OverlayName = "mist" | "dust" | "paper";
 
 export interface Chapter {
   /** Chapter id, which is also the clip id and the folder under public/frames/. */
@@ -109,8 +112,13 @@ export interface Chapter {
   caption: Caption;
   /** Per-chapter treatment of the picture (breathing, drift, vignette). */
   look?: Look;
-  /** A video overlay shown over this chapter; the chapters that share one share its opacity ramp (tune.overlays). */
-  overlay?: OverlayName;
+  /** Overlays shown over this chapter; the chapters that share one share its opacity ramp (tune.overlays). */
+  overlays?: readonly OverlayName[];
+  /**
+   * The clip's frame advance follows the scroll with a little extra smoothing and a cap on how many
+   * frames one render may move (tune.pages), so a fast flick does not strobe the page flips.
+   */
+  pageFlip?: boolean;
   /** Ambience loop id: public/audio/<ambience>.m4a (and .ogg). */
   ambience: string;
 }
@@ -202,13 +210,38 @@ export const tune = {
     breathStillVh: 24,
   },
   /**
-   * Video overlays: the file under /overlays/ (copied from art/source/overlays/ by npm run overlays),
+   * Overlays: the file under /overlays/ (copied from art/source/overlays/ by npm run overlays),
    * the opacity at the start and end of the chapters that share the overlay (linear in scroll), and how
    * it is blended. The opacity eases in over the join into the first of those chapters and out over the join
-   * after the last one when its end opacity is not zero. A missing file is skipped silently.
+   * after the last one. A missing file is skipped silently. Videos loop and play only while visible; the
+   * paper still is tiled, tileVh being the side of one tile in viewport heights.
    */
   overlays: {
-    mist: { file: "mist.mp4", from: 0.35, to: 0, blend: "screen" },
+    mist: { file: "mist.mp4", kind: "video", from: 0.35, to: 0, blend: "screen" },
+    dust: { file: "dust.mp4", kind: "video", from: 0.25, to: 0.25, blend: "screen" },
+    paper: { file: "paper.webp", kind: "image", from: 0.12, to: 0.12, blend: "soft-light", tileVh: 0.9 },
+  },
+  /**
+   * The page flips (chapters with pageFlip, src/stage/pageFlip.ts). The displayed frame index chases the
+   * scroll's frame index with an extra exponential smoothing of this angular frequency (1/s), and moves
+   * at most maxFrames frames in one render, so a fast flick plays the flips one after another instead of
+   * strobing. It lands exactly on the scroll's frame at rest, and follows it exactly under reduced motion.
+   */
+  pages: {
+    smoothOmega: 22,
+    maxFrames: 3,
+    /** The displayed frame is snapped onto the requested one within this many frames (the smoothing never quite arrives). */
+    restFrames: 0.01,
+  },
+  /**
+   * The end panel (src/stage/EndPanel.tsx): it fades in over the end screen's scroll between these two
+   * shares of it (0 at the last film frame, 1 at the bottom of the page), and takes clicks once its
+   * opacity passes interactiveAt.
+   */
+  endPanel: {
+    appearFrom: 0.12,
+    appearTo: 0.4,
+    interactiveAt: 0.6,
   },
   /**
    * Captions (src/stage/captionTiming.ts). A chapter's caption shows only inside its window: it fades in
@@ -338,7 +371,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The valley", line: "Everything you carry comes from somewhere." },
-    overlay: "mist",
+    overlays: ["mist"],
     ambience: "c03",
   },
   {
@@ -352,7 +385,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The way down", line: "One house waits at the end of the path." },
-    overlay: "mist",
+    overlays: ["mist"],
     ambience: "c04",
   },
   {
@@ -366,6 +399,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The house", line: "It remembers every hand that built it." },
+    overlays: ["dust"],
     ambience: "c05",
   },
   {
@@ -379,6 +413,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The book", line: "Choose one." },
+    overlays: ["dust", "paper"],
     ambience: "c06",
   },
   {
@@ -392,6 +427,8 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The pages", line: "Turn them as fast as you like." },
+    overlays: ["dust", "paper"],
+    pageFlip: true,
     ambience: "c07",
   },
   {
@@ -407,6 +444,7 @@ export const chapters: readonly Chapter[] = [
     anchors: { photoRect: { ...tune.defaultPhotoRect } },
     focal: centre,
     caption: { title: "The sea", line: "The picture begins to breathe." },
+    overlays: ["paper"],
     ambience: "c08",
   },
   {
@@ -437,6 +475,12 @@ export const chapters: readonly Chapter[] = [
   },
 ];
 
+/**
+ * The one link on the end panel, kept as a placeholder constant: replace label and href (docs/COPY.md).
+ * While href is "#" the panel shows the label as plain text rather than a link that goes nowhere.
+ */
+export const endLink = { label: "[label]", href: "#" } as const;
+
 /** Words around the film (docs/COPY.md). Bracketed values are placeholders to replace. */
 export const site = {
   wordmark: "Homeward",
@@ -445,7 +489,7 @@ export const site = {
   end: {
     heading: "Homeward",
     line: "[one sentence about you or the project]",
-    link: { label: "[label]", href: "#" },
+    link: endLink,
   },
   sound: { on: "Sound on", off: "Sound off" },
   skip: "Skip to end",
@@ -631,7 +675,7 @@ export function framePath(clip: string, tier: number, index: number): string {
   return `/frames/${clip}/${tier}/f_${String(index + 1).padStart(3, "0")}.webp`;
 }
 
-/** Where an overlay video is served from (copied from art/source/overlays/ by npm run overlays). */
+/** Where an overlay file is served from (copied from art/source/overlays/ by npm run overlays). */
 export function overlayPath(name: OverlayName): string {
   return `/overlays/${tune.overlays[name].file}`;
 }

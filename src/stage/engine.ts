@@ -13,12 +13,13 @@ import {
   type Tier,
 } from "@/content/story";
 import { ScrollClock } from "./clock";
-import { createCompositor, type Compositor, type CompositorStats, type Layer, type Picture, type Scene } from "./compositor";
+import { createCompositor, type Compositor, type CompositorStats, type Layer, type OverlayScene, type Picture, type Scene } from "./compositor";
 import { focalFor, isPhoneViewport } from "./fit";
 import { chooseTier, FrameStore, MB, type Frame, type FramePick, type StoreStats } from "./frameStore";
 import { joinSpeed, type JoinKind } from "./joins";
-import { breathCalm, overlayAt, pictureLook, type LookEnv, type OverlayState } from "./looks";
-import { VideoOverlay } from "./overlay";
+import { breathCalm, overlaysAt, pictureLook, type LookEnv, type OverlayState } from "./looks";
+import { createOverlay, type Overlay } from "./overlay";
+import { PageFlip } from "./pageFlip";
 
 /**
  * The stage engine: one requestAnimationFrame loop that reads the scroll into the clock, plans
@@ -33,8 +34,10 @@ import { VideoOverlay } from "./overlay";
  * plain cross-dissolve.
  *
  * Each picture also gets its chapter's look (looks.ts: zoom, drift, breath, vignette) and the scene
- * its overlay (the mist video, a screen blend over everything). Both follow p, and the breath the
- * clock as well; the loop keeps running only while the breath moves or the overlay video needs
+ * its overlays (the mist and dust videos, a screen blend, and the paper texture, a soft-light blend, over
+ * everything). Both follow p, and the breath the
+ * clock as well; the chapters with page flips (c07) show a smoothed, capped frame index (pageFlip.ts) and the loop
+ * keeps running until it has caught up. The loop keeps running only while the breath moves or an overlay video needs
  * frames pulled, and never under reduced motion.
  *
  * URL parameters (development aids):
@@ -131,8 +134,10 @@ export interface StageFrame {
   shown: FramePick | null;
   /** The join in progress, if p is inside a join window. */
   join: StageJoin | null;
-  /** The overlay showing at p (its opacity), if any; whether the video file exists is separate. */
-  overlay: OverlayState | null;
+  /** The overlays showing at p (their opacities); whether their files exist is separate. */
+  overlays: OverlayState[];
+  /** Displayed frame index of the current chapter when it has page flips (smoothed and capped), else null. */
+  flip: number | null;
   /** Breath strength, 1 at rest to 0 while scrolling fast. */
   calm: number;
   reducedMotion: boolean;
@@ -180,7 +185,10 @@ export class StageEngine {
   private cssWidth = 0;
   private cssHeight = 0;
   private latest: StageFrame | null = null;
-  private overlays: Partial<Record<OverlayName, VideoOverlay>> = {};
+  private overlays: Partial<Record<OverlayName, Overlay>> = {};
+  /** Page-flip chasers by chapter id, and the local time each one displays this frame. */
+  private flips = new Map<string, PageFlip>();
+  private flipAt = new Map<string, number>();
   /** Set while building the pictures of one frame: a breath is moving. */
   private breathing = false;
   private look: LookEnv = { width: 0, height: 0, reducedMotion: false, now: 0, calm: 1 };
@@ -251,7 +259,7 @@ export class StageEngine {
     if (this.params.memMb) store.setCap(this.params.memMb * MB);
     this.store = store;
     this.compositor = createCompositor(canvas, this.wake);
-    this.overlays = { mist: new VideoOverlay("mist", this.wake) };
+    this.overlays = Object.fromEntries((Object.keys(tune.overlays) as OverlayName[]).map((name) => [name, createOverlay(name, this.wake)]));
     if (this.params.hud) window.homewardStage = this;
 
     const cleanups: (() => void)[] = [];
@@ -312,6 +320,8 @@ export class StageEngine {
       store.dispose();
       for (const overlay of Object.values(this.overlays)) overlay?.dispose();
       this.overlays = {};
+      this.flips.clear();
+      this.flipAt.clear();
       this.compositor?.dispose();
       this.compositor = null;
       this.store = null;
@@ -353,25 +363,47 @@ export class StageEngine {
     return { a, b: this.layer(pick.b), mix: pick.mix, look };
   }
 
-  /** Keep the overlay videos in step with p: fetched when the story is near, playing while visible. */
-  private overlayScene(state: OverlayState | null, chapterIndex: number): Scene["overlay"] {
-    let scene: Scene["overlay"] = null;
-    for (const [name, overlay] of Object.entries(this.overlays) as [OverlayName, VideoOverlay][]) {
-      const group = this.story.chapters.filter((c) => c.overlay === name);
+  /** Keep the overlays in step with p: fetched when the story is near, videos playing while visible. */
+  private overlayScene(states: OverlayState[], chapterIndex: number): OverlayScene[] {
+    const scene: OverlayScene[] = [];
+    for (const [name, overlay] of Object.entries(this.overlays) as [OverlayName, Overlay][]) {
+      const group = this.story.chapters.filter((c) => c.overlays?.includes(name));
       const near =
         !this.clock.reducedMotion &&
         group.length > 0 &&
         chapterIndex >= group[0].index - 1 &&
         chapterIndex <= group[group.length - 1].index + 1;
       if (near) overlay.load();
-      const visible = state?.name === name && state.opacity > 0;
+      const state = states.find((o) => o.name === name);
+      const visible = !!state && state.opacity > 0;
       if (this.params.clock !== null) overlay.hold(visible ? this.params.clock / 1000 : null);
       else overlay.setPlaying(visible);
       const source = visible ? overlay.source() : null;
       if (visible && overlay.polling) this.breathing = true; // no frame callbacks: pull a frame every tick
-      if (source && state) scene = { source, opacity: state.opacity };
+      if (source && state) scene.push({ name, source, opacity: state.opacity });
     }
     return scene;
+  }
+
+  /**
+   * The page flips of this render: for each chapter with pageFlip, the displayed local time, which
+   * chases the scroll's (pageFlip.ts) while the chapter is playing or joining and sits on it otherwise.
+   */
+  private stepFlips(store: FrameStore, p: number, dt: number, current: StoryChapter, joining: JoinWindow | null): boolean {
+    let chasing = false;
+    this.flipAt.clear();
+    for (const c of this.story.chapters) {
+      if (!c.pageFlip) continue;
+      let flip = this.flips.get(c.id);
+      if (!flip) this.flips.set(c.id, (flip = new PageFlip()));
+      const count = store.countFor(c);
+      const target = localTOf(c, p, this.story) * (count - 1);
+      const follow = c === current || joining?.from === c || joining?.to === c;
+      const shown = flip.step(target, count, p, dt, follow, this.clock.reducedMotion);
+      this.flipAt.set(c.id, count > 1 ? shown / (count - 1) : 0);
+      if (flip.chasing(target)) chasing = true;
+    }
+    return chasing;
   }
 
   private render = (now: number) => {
@@ -409,14 +441,15 @@ export class StageEngine {
     this.look = { width: this.cssWidth, height: this.cssHeight, reducedMotion: this.clock.reducedMotion, now: this.params.clock ?? now, calm };
     const count = store.countFor(chapter);
     const t = localT(p, story);
-    const shown = store.pick(p, story);
     const active = joinAt(p, story);
+    if (this.stepFlips(store, p, dt, chapter, active?.window ?? null)) more = true;
+    const shown = store.pickChapter(chapter, p, story, this.flipAt.get(chapter.id));
     let join: StageJoin | null = null;
     let scene: Scene | null = this.picture(shown);
     if (active) {
       const { window: w } = active;
-      const out = store.pickChapter(w.from, p, story);
-      const into = store.pickChapter(w.to, p, story);
+      const out = store.pickChapter(w.from, p, story, this.flipAt.get(w.from.id));
+      const into = store.pickChapter(w.to, p, story, this.flipAt.get(w.to.id));
       const kind: JoinKind = this.clock.reducedMotion ? "dissolve" : w.type;
       const speed = joinSpeed(velocity, story.totalVh);
       join = { kind, window: w, t: active.t, speed, out, into };
@@ -429,9 +462,9 @@ export class StageEngine {
         };
       }
     }
-    const overlay = overlayAt(p, story, this.clock.reducedMotion);
-    const overlayScene = this.overlayScene(overlay, chapter.index);
-    if (scene) scene = { ...scene, overlay: overlayScene };
+    const overlays = overlaysAt(p, story, this.clock.reducedMotion);
+    const overlayScene = this.overlayScene(overlays, chapter.index);
+    if (scene) scene = { ...scene, overlays: overlayScene };
     if (this.compositor) {
       if (this.compositor.draw(scene) && !canvas.hasAttribute("data-ready")) canvas.setAttribute("data-ready", "");
     }
@@ -451,7 +484,8 @@ export class StageEngine {
       frame: t * (count - 1),
       shown,
       join,
-      overlay,
+      overlays,
+      flip: chapter.pageFlip && this.flipAt.has(chapter.id) ? this.flipAt.get(chapter.id)! * (count - 1) : null,
       calm,
       reducedMotion: this.clock.reducedMotion,
       frozen: this.clock.frozen !== null,

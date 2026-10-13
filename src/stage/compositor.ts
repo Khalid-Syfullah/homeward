@@ -1,4 +1,4 @@
-import { tune, type Point, type Rect } from "@/content/story";
+import { tune, type OverlayName, type Point, type Rect } from "@/content/story";
 import { coverFit, type Fit } from "./fit";
 import type { FrameImage } from "./frameStore";
 import { joinGeometry, type JoinGeometry, type JoinKind } from "./joins";
@@ -23,8 +23,9 @@ import type { OverlaySource } from "./overlay";
  * so it can redraw after a resize even when the frame store has let those frames go. It skips the
  * draw when nothing changed (the canvas keeps showing its last picture), so a page at rest costs
  * nothing. Each picture can carry a look (looks.ts: a zoom and drift about a point, and a vignette)
- * that its reads go through, and the whole scene can carry a screen-blended video overlay (the mist)
- * on top; a look at rest and an overlay at zero opacity change no pixel. If WebGL is unavailable it falls back to a 2D canvas that blends the same way, with the
+ * that its reads go through, and the whole scene can carry overlays on top: the mist and dust videos
+ * (screen blend) and the tiled paper still (soft-light blend); a look at rest and an overlay at zero
+ * opacity change no pixel. If WebGL is unavailable it falls back to a 2D canvas that blends the same way, with the
  * joins reduced to what a 2D context can clip and scale.
  */
 
@@ -48,8 +49,12 @@ export interface Picture {
   look?: PictureLook | null;
 }
 
-/** A video blended over the finished picture with the screen blend, at an opacity. */
+/**
+ * An overlay blended over the finished picture at an opacity: a video with the screen blend (mist,
+ * dust) or the paper still, tiled, with the soft-light blend.
+ */
 export interface OverlayScene {
+  name: OverlayName;
   source: OverlaySource;
   /** 0..1; nothing is drawn at zero. */
   opacity: number;
@@ -73,7 +78,7 @@ export interface JoinScene {
 /** What to draw: the picture of the chapter playing (the outgoing one inside a join), and the join. */
 export interface Scene extends Picture {
   join?: JoinScene | null;
-  overlay?: OverlayScene | null;
+  overlays?: readonly OverlayScene[] | null;
 }
 
 export interface CompositorStats {
@@ -140,10 +145,17 @@ uniform vec4 uVig0;
 uniform vec4 uVigCol0;
 uniform vec4 uVig1;
 uniform vec4 uVigCol1;
-// The overlay: its texture, its cover fit and its opacity (zero when there is none).
+// The overlays: the mist and the dust (video textures, each with a cover fit and an opacity, zero when
+// there is none) and the paper (a tiled still: the side of one tile in viewport heights, and an opacity).
 uniform sampler2D uMistTex;
 uniform vec4 uMistFit;
 uniform float uMistOpacity;
+uniform sampler2D uDustTex;
+uniform vec4 uDustFit;
+uniform float uDustOpacity;
+uniform sampler2D uPaperTex;
+uniform float uPaperTile;
+uniform float uPaperOpacity;
 
 vec3 vignette(vec3 c, vec2 s, vec4 v, vec4 col) {
   if (col.w <= 0.0) return c;
@@ -166,11 +178,28 @@ vec3 pictureB(vec2 screen) {
   return vignette(c, screen, uVig1, uVigCol1);
 }
 
-// Last step of every program: the screen blend of the overlay video over the finished picture.
+// W3C soft-light of a source over a backdrop, per channel.
+vec3 softLight(vec3 cb, vec3 cs) {
+  vec3 d = mix(sqrt(cb), ((16.0 * cb - 12.0) * cb + 4.0) * cb, step(cb, vec3(0.25)));
+  vec3 low = cb - (1.0 - 2.0 * cs) * cb * (1.0 - cb);
+  vec3 high = cb + (2.0 * cs - 1.0) * (d - cb);
+  return mix(high, low, step(cs, vec3(0.5)));
+}
+
+// Last step of every program: the overlays over the finished picture. The mist and the dust are
+// screen blends of a video (black disappears); the paper is a soft-light blend of a tiled still.
 vec3 finish(vec3 c, vec2 screen) {
   if (uMistOpacity > 0.0) {
     vec3 m = texture2D(uMistTex, screen * uMistFit.xy + uMistFit.zw).rgb;
     c = 1.0 - (1.0 - c) * (1.0 - m * uMistOpacity);
+  }
+  if (uDustOpacity > 0.0) {
+    vec3 m = texture2D(uDustTex, screen * uDustFit.xy + uDustFit.zw).rgb;
+    c = 1.0 - (1.0 - c) * (1.0 - m * uDustOpacity);
+  }
+  if (uPaperOpacity > 0.0) {
+    vec3 m = texture2D(uPaperTex, vec2(screen.x * uAspect, screen.y) / uPaperTile).rgb;
+    c = mix(c, softLight(c, m), uPaperOpacity);
   }
   return c;
 }
@@ -335,8 +364,16 @@ const FRAGMENTS: Record<ProgramName, string> = {
 /** One triangle that covers the whole viewport. */
 const COVER_TRIANGLE = new Float32Array([-1, -1, 3, -1, -1, 3]);
 
-/** Texture unit of the overlay (0 to 3 hold the four frames). */
-const MIST_UNIT = 4;
+/** Texture units of the overlays (0 to 3 hold the four frames). */
+const OVERLAY_UNIT: Record<OverlayName, number> = { mist: 4, dust: 5, paper: 6 };
+
+/** Largest side an overlay still is resized to when it is not a power of two (WebGL 1 repeats only those). */
+const MAX_TILE_SIDE = 2048;
+
+/** Stem of each overlay's uniform names in the shader (uMistTex, uDustFit, uPaperOpacity ...). */
+const OVERLAY_UNIFORM: Record<OverlayName, string> = { mist: "Mist", dust: "Dust", paper: "Paper" };
+
+const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
 
 /** Smallest width a smoothstep edge may have (its two edges must differ). */
 const MIN_EDGE = 1e-3;
@@ -360,7 +397,7 @@ interface JoinMeta extends Omit<JoinScene, "into"> {
 /** A scene without its images: enough to redraw (the textures are cached by key) and to compare. */
 interface Drawn extends PictureMeta {
   join: JoinMeta | null;
-  overlay: OverlayScene | null;
+  overlays: OverlayScene[];
 }
 
 const fitVec = (f: Fit): [number, number, number, number] => [f.scaleX, f.scaleY, f.offsetX, f.offsetY];
@@ -371,7 +408,7 @@ function drawnOf(scene: Scene): Drawn {
   const join = scene.join
     ? { kind: scene.join.kind, t: scene.join.t, speed: scene.join.speed, px: scene.join.px, pupil: scene.join.pupil, photoRect: scene.join.photoRect, into: pictureMeta(scene.join.into) }
     : null;
-  return { ...pictureMeta(scene), join, overlay: scene.overlay && scene.overlay.opacity > 0 ? scene.overlay : null };
+  return { ...pictureMeta(scene), join, overlays: (scene.overlays ?? []).filter((o) => o.opacity > 0) };
 }
 
 function layersOf(scene: Scene): Layer[] {
@@ -402,7 +439,7 @@ function signatureOf(width: number, height: number, d: Drawn): string {
     if (j.pupil) s += `|${pointSig(j.pupil)}`;
     if (j.photoRect) s += `|${j.photoRect.x},${j.photoRect.y},${j.photoRect.w},${j.photoRect.h}`;
   }
-  if (d.overlay) s += `|overlay ${d.overlay.opacity}@${d.overlay.source.version}`;
+  for (const o of d.overlays) s += `|${o.name} ${o.opacity}@${o.source.version}`;
   return s;
 }
 
@@ -497,8 +534,8 @@ class WebGLCompositor implements Compositor {
   private programs: Partial<Record<ProgramName, Program>> = {};
   private buffer: WebGLBuffer | null = null;
   private textures = new Map<string, Texture>();
-  /** The overlay video's texture and the video frame version it holds. */
-  private mist: { texture: WebGLTexture; version: number } | null = null;
+  /** The overlays' textures and the frame version each holds. */
+  private overlayTextures = new Map<OverlayName, { texture: WebGLTexture; version: number }>();
   private tick = 0;
   private last: Drawn | null = null;
   private signature = "";
@@ -542,7 +579,7 @@ class WebGLCompositor implements Compositor {
     event.preventDefault(); // ask for the context back
     this.lost = true;
     this.textures.clear();
-    this.mist = null;
+    this.overlayTextures.clear();
     this.programs = {};
     this.last = null;
     this.signature = "";
@@ -605,35 +642,46 @@ class WebGLCompositor implements Compositor {
   }
 
   /**
-   * Make the overlay texture hold the video's current frame. False if it cannot (the video has no
-   * frame yet, or the upload is refused): the picture is then drawn without the overlay.
+   * Make the overlay's texture hold the video's current frame (or the still). False if it cannot (the
+   * video has no frame yet, or the upload is refused): the picture is then drawn without the overlay.
    */
-  private uploadMist(overlay: OverlayScene): boolean {
+  private uploadOverlay(overlay: OverlayScene): boolean {
     const gl = this.gl;
-    const { video, version } = overlay.source;
-    if (this.mist && this.mist.version === version) return true;
-    let entry = this.mist;
+    const { name, source } = overlay;
+    const held = this.overlayTextures.get(name);
+    if (held && held.version === source.version) return true;
+    let entry = held;
     if (!entry) {
       const texture = gl.createTexture();
       if (!texture) return false;
       entry = { texture, version: -1 };
     }
-    gl.activeTexture(gl.TEXTURE0 + MIST_UNIT);
+    // A still that is not a power of two is stretched onto one that is, so it can repeat.
+    let media: TexImageSource = source.element;
+    if (source.kind === "image" && !(isPowerOfTwo(source.width) && isPowerOfTwo(source.height))) {
+      const side = Math.min(2 ** Math.ceil(Math.log2(Math.max(source.width, source.height))), MAX_TILE_SIDE);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = side;
+      canvas.getContext("2d")?.drawImage(source.element, 0, 0, side, side);
+      media = canvas;
+    }
+    gl.activeTexture(gl.TEXTURE0 + OVERLAY_UNIT[name]);
     gl.bindTexture(gl.TEXTURE_2D, entry.texture);
     if (entry.version < 0) {
+      const wrap = source.kind === "image" ? gl.REPEAT : gl.CLAMP_TO_EDGE;
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
     }
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, media);
     } catch {
-      if (!this.mist) gl.deleteTexture(entry.texture);
+      if (!held) gl.deleteTexture(entry.texture);
       return false;
     }
-    entry.version = version;
-    this.mist = entry;
+    entry.version = source.version;
+    this.overlayTextures.set(name, entry);
     return true;
   }
 
@@ -699,20 +747,23 @@ class WebGLCompositor implements Compositor {
     program.v2("uView", width, height);
     program.f("uAspect", width / height);
 
-    // The overlay: its frame in a texture of its own, read through a cover fit of its own.
-    let mistOpacity = 0;
-    const overlay = drawn.overlay;
-    if (overlay && this.uploadMist(overlay)) {
-      mistOpacity = overlay.opacity;
-      const { video } = overlay.source;
-      const fit = coverFit(width, height, video.videoWidth, video.videoHeight, { x: 0.5, y: 0.5 });
-      program.v4("uMistFit", ...fitVec(fit));
+    // The overlays: each in a texture of its own, the videos read through a cover fit of their own.
+    const opacity: Record<OverlayName, number> = { mist: 0, dust: 0, paper: 0 };
+    for (const overlay of drawn.overlays) {
+      if (!this.uploadOverlay(overlay)) continue;
+      const { name, source } = overlay;
+      opacity[name] = overlay.opacity;
+      if (name === "paper") program.f("uPaperTile", Math.max(tune.overlays.paper.tileVh, MIN_EDGE));
+      else program.v4(`u${OVERLAY_UNIFORM[name]}Fit`, ...fitVec(coverFit(width, height, source.width, source.height, { x: 0.5, y: 0.5 })));
     }
-    program.f("uMistOpacity", mistOpacity);
-    program.i("uMistTex", MIST_UNIT);
-    if (mistOpacity > 0 && this.mist) {
-      gl.activeTexture(gl.TEXTURE0 + MIST_UNIT);
-      gl.bindTexture(gl.TEXTURE_2D, this.mist.texture);
+    for (const [name, unit] of Object.entries(OVERLAY_UNIT) as [OverlayName, number][]) {
+      program.f(`u${OVERLAY_UNIFORM[name]}Opacity`, opacity[name]);
+      program.i(`u${OVERLAY_UNIFORM[name]}Tex`, unit);
+      const entry = this.overlayTextures.get(name);
+      if (opacity[name] > 0 && entry) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+      }
     }
     const setVignette = (n: 0 | 1, look: PictureLook | null) => {
       const v = look?.vignette;
@@ -790,12 +841,12 @@ class WebGLCompositor implements Compositor {
     const gl = this.gl;
     if (!gl.isContextLost()) {
       for (const t of this.textures.values()) gl.deleteTexture(t.texture);
-      if (this.mist) gl.deleteTexture(this.mist.texture);
+      for (const o of this.overlayTextures.values()) gl.deleteTexture(o.texture);
       if (this.buffer) gl.deleteBuffer(this.buffer);
       for (const p of Object.values(this.programs)) p?.dispose();
     }
     this.textures.clear();
-    this.mist = null;
+    this.overlayTextures.clear();
     this.programs = {};
     this.last = null;
     this.signature = "";
@@ -880,17 +931,28 @@ class Canvas2DCompositor implements Compositor {
     }
   }
 
-  /** The overlay video over the finished picture, with the screen blend. */
+  /** An overlay over the finished picture: a video with the screen blend, the paper tiled with soft-light. */
   private overlay(overlay: OverlayScene) {
-    const { video } = overlay.source;
+    const { source } = overlay;
     const { width, height } = this.canvas;
-    if (video.videoWidth === 0) return;
-    const fit = coverFit(width, height, video.videoWidth, video.videoHeight, { x: 0.5, y: 0.5 });
+    if (source.width === 0) return;
     const ctx = this.ctx;
     ctx.save();
-    ctx.globalCompositeOperation = "screen";
     ctx.globalAlpha = overlay.opacity;
-    ctx.drawImage(video, (-fit.offsetX * width) / fit.scaleX, (-fit.offsetY * height) / fit.scaleY, width / fit.scaleX, height / fit.scaleY);
+    if (source.kind === "image") {
+      const pattern = ctx.createPattern(source.element, "repeat");
+      if (pattern) {
+        const k = (tune.overlays.paper.tileVh * height) / source.width;
+        pattern.setTransform(new DOMMatrix().scale(k, k));
+        ctx.globalCompositeOperation = "soft-light";
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, 0, width, height);
+      }
+    } else {
+      const fit = coverFit(width, height, source.width, source.height, { x: 0.5, y: 0.5 });
+      ctx.globalCompositeOperation = "screen";
+      ctx.drawImage(source.element, (-fit.offsetX * width) / fit.scaleX, (-fit.offsetY * height) / fit.scaleY, width / fit.scaleX, height / fit.scaleY);
+    }
     ctx.restore();
   }
 
@@ -951,7 +1013,7 @@ class Canvas2DCompositor implements Compositor {
           }
         }
       }
-      if (drawn.overlay) this.overlay(drawn.overlay);
+      for (const o of drawn.overlays) this.overlay(o);
     } catch {
       return this.signature !== "";
     } finally {
