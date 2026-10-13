@@ -10,6 +10,9 @@
 //
 // Folders holding real frames (a manifest without "placeholder": true, written by
 // npm run art:import) are never touched. Unchanged placeholders are skipped by fingerprint.
+// Optional clips (c03-portal) get a placeholder only while no clip has real frames: once real art
+// is in, an optional clip without real frames is left out (its placeholder removed), so the story
+// skips it and joins past it with optional.joinWhenSkipped, as the finished film will.
 //
 //   npm run placeholders                      write what is missing or stale
 //   npm run placeholders -- --force           rewrite every placeholder clip
@@ -244,12 +247,26 @@ async function main() {
   let kept = 0;
   const started = Date.now();
 
+  const manifests = new Map();
+  for (const chapter of chapters) manifests.set(chapter.clip, await readManifest(chapter.clip));
+  const realArt = [...manifests.values()].some((m) => m && m.placeholder !== true);
+
   for (const chapter of chapters) {
     const clip = chapter.clip;
     if (args.only && clip !== args.only && chapter.id !== args.only) continue;
     const dir = path.join(FRAMES_DIR, clip);
-    const manifest = await readManifest(clip);
+    const manifest = manifests.get(clip);
     const isReal = manifest && manifest.placeholder !== true;
+
+    if (chapter.optional && realArt && !isReal) {
+      if (manifest) {
+        await rm(dir, { recursive: true, force: true });
+        console.log(
+          `  ${clip}: optional placeholder removed (real art is in and this clip has none, so the story joins past it with '${chapter.optional.joinWhenSkipped}')`,
+        );
+      }
+      continue;
+    }
 
     if (args.without.has(clip) || args.without.has(chapter.id)) {
       if (manifest && !isReal) {

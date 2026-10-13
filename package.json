@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "placeholders": "node scripts/placeholders.mjs"
+    "placeholders": "node scripts/placeholders.mjs",
+    "art:import": "node scripts/art-import.mjs",
+    "art:check": "node scripts/art-check.mjs"
   },
   "dependencies": {
     "next": "16.4.0",
