@@ -1,0 +1,32 @@
+{
+  "clip": "c06-book",
+  "placeholder": false,
+  "fingerprint": "4847732ae6fba9a0196a5860c0f14861c6394402",
+  "frames": 48,
+  "tiers": {
+    "768": {
+      "count": 48,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1131810,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 48,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 2889410,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c06-book.mp4",
+    "sha1": "bf53e1021f078c3056a0085e6b41d2c5cc60af4a",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
