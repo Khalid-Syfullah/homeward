@@ -1,0 +1,32 @@
+{
+  "clip": "c05-enter",
+  "placeholder": false,
+  "fingerprint": "60ef71ca730302f5a0383b9a6591849478b30231",
+  "frames": 60,
+  "tiers": {
+    "768": {
+      "count": 60,
+      "width": 768,
+      "height": 432,
+      "quality": 72,
+      "bytes": 1362492,
+      "dropEvery": null
+    },
+    "1440": {
+      "count": 60,
+      "width": 1440,
+      "height": 810,
+      "quality": 78,
+      "bytes": 3371468,
+      "dropEvery": null
+    }
+  },
+  "poster": "poster.webp",
+  "source": {
+    "file": "art/source/clips/c05-enter.mp4",
+    "sha1": "2ba3599a1767b42dbc65315987be6ec9bd1e106a",
+    "seconds": 8,
+    "normalisedFrames": 192,
+    "fps": 24
+  }
+}
