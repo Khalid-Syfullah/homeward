@@ -3,8 +3,10 @@ import {
   joinAt,
   joinWindow,
   localT,
+  localTOf,
   tune,
   type JoinWindow,
+  type OverlayName,
   type Point,
   type Story,
   type StoryChapter,
@@ -15,6 +17,8 @@ import { createCompositor, type Compositor, type CompositorStats, type Layer, ty
 import { focalFor, isPhoneViewport } from "./fit";
 import { chooseTier, FrameStore, MB, type Frame, type FramePick, type StoreStats } from "./frameStore";
 import { joinSpeed, type JoinKind } from "./joins";
+import { breathCalm, overlayAt, pictureLook, type LookEnv, type OverlayState } from "./looks";
+import { VideoOverlay } from "./overlay";
 
 /**
  * The stage engine: one requestAnimationFrame loop that reads the scroll into the clock, plans
@@ -28,6 +32,11 @@ import { joinSpeed, type JoinKind } from "./joins";
  * compositor the join with its time t and the scroll speed. Under reduced motion every join is the
  * plain cross-dissolve.
  *
+ * Each picture also gets its chapter's look (looks.ts: zoom, drift, breath, vignette) and the scene
+ * its overlay (the mist video, a screen blend over everything). Both follow p, and the breath the
+ * clock as well; the loop keeps running only while the breath moves or the overlay video needs
+ * frames pulled, and never under reduced motion.
+ *
  * URL parameters (development aids):
  *   ?hud=1                  the dev HUD (and window.homewardStage)
  *   ?p=0.42                 freeze progress at 0.42 (the scroll is ignored)
@@ -35,6 +44,8 @@ import { joinSpeed, type JoinKind } from "./joins";
  *                           t=0 and t=1 show the plain frames either side of the window
  *   ?v=120                  while frozen, pretend the page scrolls at 120 vh per second (the smear
  *                           and edge terms follow the speed, so a still hold would not show them)
+ *   ?clock=1500             hold the ambient clock at 1500 ms: the breath stands at that time and the overlay
+ *                           video is paused at that time of its loop, so screenshots and hashes repeat exactly
  *   ?tier=768               force a frame tier
  *   ?mem=80                 frame memory cap in MB (default tune.memoryCapMb)
  */
@@ -47,6 +58,8 @@ export interface StageParams {
   t: number | null;
   /** Pretended scroll speed while frozen, in vh per second. */
   v: number | null;
+  /** Ambient clock held at this many ms (breath and overlay video), or null to follow real time. */
+  clock: number | null;
   tier: Tier | null;
   memMb: number | null;
 }
@@ -62,6 +75,7 @@ export function readStageParams(search: string): StageParams {
   const p = num("p");
   const t = num("t");
   const v = num("v");
+  const clock = num("clock");
   const tier = num("tier");
   const mem = num("mem");
   const join = q.get("join");
@@ -71,6 +85,7 @@ export function readStageParams(search: string): StageParams {
     join: join && join.trim() !== "" ? join.trim() : null,
     t: t === null ? null : Math.min(1, Math.max(0, t)),
     v,
+    clock: clock === null ? null : Math.max(0, clock),
     tier: tier !== null && (tune.tiers as readonly number[]).includes(tier) ? (tier as Tier) : null,
     memMb: mem !== null && mem > 0 ? mem : null,
   };
@@ -116,6 +131,10 @@ export interface StageFrame {
   shown: FramePick | null;
   /** The join in progress, if p is inside a join window. */
   join: StageJoin | null;
+  /** The overlay showing at p (its opacity), if any; whether the video file exists is separate. */
+  overlay: OverlayState | null;
+  /** Breath strength, 1 at rest to 0 while scrolling fast. */
+  calm: number;
   reducedMotion: boolean;
   frozen: boolean;
   /** Viewport size in CSS pixels, and the device pixel ratio the canvas uses. */
@@ -147,7 +166,7 @@ declare global {
 
 export class StageEngine {
   readonly clock = new ScrollClock();
-  params: StageParams = { hud: false, p: null, join: null, t: null, v: null, tier: null, memMb: null };
+  params: StageParams = { hud: false, p: null, join: null, t: null, v: null, clock: null, tier: null, memMb: null };
 
   private story: Story;
   private store: FrameStore | null = null;
@@ -161,6 +180,11 @@ export class StageEngine {
   private cssWidth = 0;
   private cssHeight = 0;
   private latest: StageFrame | null = null;
+  private overlays: Partial<Record<OverlayName, VideoOverlay>> = {};
+  /** Set while building the pictures of one frame: a breath is moving. */
+  private breathing = false;
+  private look: LookEnv = { width: 0, height: 0, reducedMotion: false, now: 0, calm: 1 };
+  private p = 0;
 
   constructor(story: Story) {
     this.story = story;
@@ -227,6 +251,7 @@ export class StageEngine {
     if (this.params.memMb) store.setCap(this.params.memMb * MB);
     this.store = store;
     this.compositor = createCompositor(canvas, this.wake);
+    this.overlays = { mist: new VideoOverlay("mist", this.wake) };
     if (this.params.hud) window.homewardStage = this;
 
     const cleanups: (() => void)[] = [];
@@ -264,7 +289,9 @@ export class StageEngine {
     if (process.env.NODE_ENV !== "production") {
       // Frames imported while the page is open appear when you come back to the tab.
       const recheck = () => {
-        if (document.visibilityState === "visible") store.recheckManifests();
+        if (document.visibilityState !== "visible") return;
+        store.recheckManifests();
+        for (const overlay of Object.values(this.overlays)) overlay?.retry();
       };
       on("focus", recheck);
       document.addEventListener("visibilitychange", recheck);
@@ -283,6 +310,8 @@ export class StageEngine {
       this.raf = 0;
       this.resting = true;
       store.dispose();
+      for (const overlay of Object.values(this.overlays)) overlay?.dispose();
+      this.overlays = {};
       this.compositor?.dispose();
       this.compositor = null;
       this.store = null;
@@ -313,11 +342,36 @@ export class StageEngine {
     return { key: frame.key, image: frame.image, width: frame.width, height: frame.height, focal };
   }
 
-  /** A pick as a compositor picture, if the store still holds both of its frames. */
+  /** A pick as a compositor picture with its chapter's look, if the store still holds both of its frames. */
   private picture(pick: FramePick | null): Picture | null {
     const store = this.store;
     if (!pick || !store || !store.holds(pick.a) || !store.holds(pick.b)) return null;
-    return { a: this.layer(pick.a), b: this.layer(pick.b), mix: pick.mix };
+    const a = this.layer(pick.a);
+    const chapter = this.story.chapters.find((c) => c.clip === pick.a.clip);
+    const look = chapter ? pictureLook(chapter, localTOf(chapter, this.p, this.story), this.look, a) : null;
+    if (look?.breathing) this.breathing = true;
+    return { a, b: this.layer(pick.b), mix: pick.mix, look };
+  }
+
+  /** Keep the overlay videos in step with p: fetched when the story is near, playing while visible. */
+  private overlayScene(state: OverlayState | null, chapterIndex: number): Scene["overlay"] {
+    let scene: Scene["overlay"] = null;
+    for (const [name, overlay] of Object.entries(this.overlays) as [OverlayName, VideoOverlay][]) {
+      const group = this.story.chapters.filter((c) => c.overlay === name);
+      const near =
+        !this.clock.reducedMotion &&
+        group.length > 0 &&
+        chapterIndex >= group[0].index - 1 &&
+        chapterIndex <= group[group.length - 1].index + 1;
+      if (near) overlay.load();
+      const visible = state?.name === name && state.opacity > 0;
+      if (this.params.clock !== null) overlay.hold(visible ? this.params.clock / 1000 : null);
+      else overlay.setPlaying(visible);
+      const source = visible ? overlay.source() : null;
+      if (visible && overlay.polling) this.breathing = true; // no frame callbacks: pull a frame every tick
+      if (source && state) scene = { source, opacity: state.opacity };
+    }
+    return scene;
   }
 
   private render = (now: number) => {
@@ -349,6 +403,10 @@ export class StageEngine {
     //    chapters' frames and the join itself; if one side has nothing loaded, the plain frame.
     store.update(p, this.direction, story);
     const chapter = chapterAt(p, story);
+    this.p = p;
+    this.breathing = false;
+    const calm = breathCalm(velocity, story.totalVh);
+    this.look = { width: this.cssWidth, height: this.cssHeight, reducedMotion: this.clock.reducedMotion, now: this.params.clock ?? now, calm };
     const count = store.countFor(chapter);
     const t = localT(p, story);
     const shown = store.pick(p, story);
@@ -371,6 +429,9 @@ export class StageEngine {
         };
       }
     }
+    const overlay = overlayAt(p, story, this.clock.reducedMotion);
+    const overlayScene = this.overlayScene(overlay, chapter.index);
+    if (scene) scene = { ...scene, overlay: overlayScene };
     if (this.compositor) {
       if (this.compositor.draw(scene) && !canvas.hasAttribute("data-ready")) canvas.setAttribute("data-ready", "");
     }
@@ -390,6 +451,8 @@ export class StageEngine {
       frame: t * (count - 1),
       shown,
       join,
+      overlay,
+      calm,
       reducedMotion: this.clock.reducedMotion,
       frozen: this.clock.frozen !== null,
       width: this.cssWidth,
@@ -406,6 +469,7 @@ export class StageEngine {
       }
     }
 
+    if (this.breathing) more = true;
     if (more) this.raf = requestAnimationFrame(this.render);
     else this.resting = true;
   };

@@ -28,5 +28,6 @@ art/PROMPT-SHEET.md
 # from git, or host the frames elsewhere: the site needs public/frames at runtime (about 50 MB at full art).
 public/frames/
 public/audio/
+public/overlays/
 
 .DS_Store

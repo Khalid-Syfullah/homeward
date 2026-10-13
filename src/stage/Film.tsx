@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { chapters, endScreenT, manifestPath, resolveStory, site } from "@/content/story";
+import { Captions } from "./Captions";
 import { Stage } from "./Stage";
 import { useStageFrame } from "./useStage";
 import styles from "./Film.module.css";
@@ -41,6 +42,7 @@ export function Film({ initialMissing }: FilmProps) {
     <main className={styles.track} style={{ height: `calc(${story.totalVh}vh + 100vh)` }}>
       <div className={styles.stage}>
         <Stage story={story}>
+          <Captions story={story} />
           <EndScreen />
         </Stage>
       </div>

@@ -101,6 +101,8 @@ function readout(f: StageFrame, s: StageStats, fps: number | null, anchor: strin
         : "nothing loaded yet"
     }`,
     ...joinLines(f),
+    `look      ${f.chapter.look ? `${Object.keys(f.chapter.look).join(", ")}   calm ${fixed(f.calm, 2)}` : "none"}${f.reducedMotion ? "   (reduced motion: static)" : ""}`,
+    `overlay   ${f.overlay ? `${f.overlay.name} opacity ${fixed(f.overlay.opacity, 3)}` : "none"}`,
   ];
   if (!f.join && join) lines.push(`          (story: ${join.window.type} ${join.window.from.id} > ${join.window.to.id} t ${fixed(join.t, 3)})`);
   lines.push(`anchor    ${anchor}`);

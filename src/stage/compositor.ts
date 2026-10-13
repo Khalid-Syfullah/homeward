@@ -2,6 +2,8 @@ import { tune, type Point, type Rect } from "@/content/story";
 import { coverFit, type Fit } from "./fit";
 import type { FrameImage } from "./frameStore";
 import { joinGeometry, type JoinGeometry, type JoinKind } from "./joins";
+import type { PictureLook } from "./looks";
+import type { OverlaySource } from "./overlay";
 
 /**
  * The compositor: the only thing that draws. Raw WebGL 1 on the one fixed full-viewport canvas.
@@ -20,7 +22,9 @@ import { joinGeometry, type JoinGeometry, type JoinKind } from "./joins";
  * It keeps a small LRU of GPU textures (tune.textureCache) and always keeps the last frames it drew,
  * so it can redraw after a resize even when the frame store has let those frames go. It skips the
  * draw when nothing changed (the canvas keeps showing its last picture), so a page at rest costs
- * nothing. If WebGL is unavailable it falls back to a 2D canvas that blends the same way, with the
+ * nothing. Each picture can carry a look (looks.ts: a zoom and drift about a point, and a vignette)
+ * that its reads go through, and the whole scene can carry a screen-blended video overlay (the mist)
+ * on top; a look at rest and an overlay at zero opacity change no pixel. If WebGL is unavailable it falls back to a 2D canvas that blends the same way, with the
  * joins reduced to what a 2D context can clip and scale.
  */
 
@@ -40,6 +44,15 @@ export interface Picture {
   b: Layer;
   /** 0 shows a, 1 shows b. */
   mix: number;
+  /** The chapter's look (zoom, drift, vignette), if it has one showing. */
+  look?: PictureLook | null;
+}
+
+/** A video blended over the finished picture with the screen blend, at an opacity. */
+export interface OverlayScene {
+  source: OverlaySource;
+  /** 0..1; nothing is drawn at zero. */
+  opacity: number;
 }
 
 /** A join in progress: the incoming chapter's picture and the numbers that place the transition. */
@@ -60,6 +73,7 @@ export interface JoinScene {
 /** What to draw: the picture of the chapter playing (the outgoing one inside a join), and the join. */
 export interface Scene extends Picture {
   join?: JoinScene | null;
+  overlay?: OverlayScene | null;
 }
 
 export interface CompositorStats {
@@ -110,6 +124,7 @@ precision mediump float;
 #endif
 varying vec2 vScreen;
 uniform vec2 uView;
+uniform float uAspect;
 uniform sampler2D uFrameA0;
 uniform sampler2D uFrameB0;
 uniform float uMix0;
@@ -118,25 +133,52 @@ uniform sampler2D uFrameA1;
 uniform sampler2D uFrameB1;
 uniform float uMix1;
 uniform vec4 uFit1;
+// Vignettes, per picture: uVig = (centre xy, inner, outer radius squared, in viewport heights), uVigCol = (rgb,
+// strength); zero strength at rest. The zoom and drift of a look are not here: they are composed
+// into the cover fit (uFit) on the CPU, so the frame reads below are the plain ones to the bit.
+uniform vec4 uVig0;
+uniform vec4 uVigCol0;
+uniform vec4 uVig1;
+uniform vec4 uVigCol1;
+// The overlay: its texture, its cover fit and its opacity (zero when there is none).
+uniform sampler2D uMistTex;
+uniform vec4 uMistFit;
+uniform float uMistOpacity;
+
+vec3 vignette(vec3 c, vec2 s, vec4 v, vec4 col) {
+  if (col.w <= 0.0) return c;
+  vec2 d = (s - v.xy) * vec2(uAspect, 1.0);
+  float w = smoothstep(v.z, v.w, dot(d, d)) * col.w;
+  return mix(c, col.rgb, w);
+}
 
 vec3 pictureA(vec2 screen) {
   vec2 uv = screen * uFit0.xy + uFit0.zw;
   vec3 c = texture2D(uFrameA0, uv).rgb;
   if (uMix0 > 0.0) c = mix(c, texture2D(uFrameB0, uv).rgb, uMix0);
-  return c;
+  return vignette(c, screen, uVig0, uVigCol0);
 }
 
 vec3 pictureB(vec2 screen) {
   vec2 uv = screen * uFit1.xy + uFit1.zw;
   vec3 c = texture2D(uFrameA1, uv).rgb;
   if (uMix1 > 0.0) c = mix(c, texture2D(uFrameB1, uv).rgb, uMix1);
+  return vignette(c, screen, uVig1, uVigCol1);
+}
+
+// Last step of every program: the screen blend of the overlay video over the finished picture.
+vec3 finish(vec3 c, vec2 screen) {
+  if (uMistOpacity > 0.0) {
+    vec3 m = texture2D(uMistTex, screen * uMistFit.xy + uMistFit.zw).rgb;
+    c = 1.0 - (1.0 - c) * (1.0 - m * uMistOpacity);
+  }
   return c;
 }
 `;
 
 const FRAGMENT_PLAIN = `${FRAGMENT_COMMON}
 void main() {
-  gl_FragColor = vec4(pictureA(vScreen), 1.0);
+  gl_FragColor = vec4(finish(pictureA(vScreen), vScreen), 1.0);
 }
 `;
 
@@ -158,7 +200,7 @@ uniform float uMixAB;
 void main() {
   vec3 c = pictureA(vScreen);
   if (uMixAB > 0.0) c = blend(c, pictureB(vScreen), uMixAB);
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(finish(c, vScreen), 1.0);
 }
 `;
 
@@ -190,7 +232,7 @@ void main() {
     a += da * 0.2;
     b += db * 0.2;
   }
-  gl_FragColor = vec4(blend(a, b, uMixAB), 1.0);
+  gl_FragColor = vec4(finish(blend(a, b, uMixAB), vScreen), 1.0);
 }
 `;
 
@@ -248,7 +290,7 @@ void main() {
       c *= 1.0 - uEdge.w * ring * ring;
     }
   }
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(finish(c, vScreen), 1.0);
 }
 `;
 
@@ -276,7 +318,7 @@ void main() {
     float w = uDissolve * (1.0 - smoothstep(0.0, uFeather, sd));
     c = blend(pictureA(vScreen * uOutMap.xy + uOutMap.zw), pictureB(vScreen), w);
   }
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(finish(c, vScreen), 1.0);
 }
 `;
 
@@ -293,6 +335,9 @@ const FRAGMENTS: Record<ProgramName, string> = {
 /** One triangle that covers the whole viewport. */
 const COVER_TRIANGLE = new Float32Array([-1, -1, 3, -1, -1, 3]);
 
+/** Texture unit of the overlay (0 to 3 hold the four frames). */
+const MIST_UNIT = 4;
+
 /** Smallest width a smoothstep edge may have (its two edges must differ). */
 const MIN_EDGE = 1e-3;
 
@@ -307,6 +352,7 @@ interface PictureMeta {
   a: LayerMeta;
   b: LayerMeta;
   mix: number;
+  look: PictureLook | null;
 }
 interface JoinMeta extends Omit<JoinScene, "into"> {
   into: PictureMeta;
@@ -314,17 +360,18 @@ interface JoinMeta extends Omit<JoinScene, "into"> {
 /** A scene without its images: enough to redraw (the textures are cached by key) and to compare. */
 interface Drawn extends PictureMeta {
   join: JoinMeta | null;
+  overlay: OverlayScene | null;
 }
 
 const fitVec = (f: Fit): [number, number, number, number] => [f.scaleX, f.scaleY, f.offsetX, f.offsetY];
 const meta = ({ key, width, height, focal }: Layer): LayerMeta => ({ key, width, height, focal });
-const pictureMeta = (p: Picture): PictureMeta => ({ a: meta(p.a), b: meta(p.b), mix: p.mix });
+const pictureMeta = (p: Picture): PictureMeta => ({ a: meta(p.a), b: meta(p.b), mix: p.mix, look: p.look ?? null });
 
 function drawnOf(scene: Scene): Drawn {
   const join = scene.join
     ? { kind: scene.join.kind, t: scene.join.t, speed: scene.join.speed, px: scene.join.px, pupil: scene.join.pupil, photoRect: scene.join.photoRect, into: pictureMeta(scene.join.into) }
     : null;
-  return { ...pictureMeta(scene), join };
+  return { ...pictureMeta(scene), join, overlay: scene.overlay && scene.overlay.opacity > 0 ? scene.overlay : null };
 }
 
 function layersOf(scene: Scene): Layer[] {
@@ -340,7 +387,12 @@ function keysOf(drawn: Drawn): string[] {
 }
 
 const pointSig = (p: Point) => `${p.x},${p.y}`;
-const pictureSig = (p: PictureMeta) => `${p.a.key}|${p.b.key}|${p.mix}|${pointSig(p.a.focal)}`;
+const lookSig = (l: PictureLook | null) =>
+  l
+    ? `${pointSig(l.centre)},${l.term},${l.shiftY}` +
+      (l.vignette ? `,${pointSig(l.vignette.centre)},${l.vignette.inner},${l.vignette.outer},${l.vignette.strength},${l.vignette.color.join(",")}` : "")
+    : "-";
+const pictureSig = (p: PictureMeta) => `${p.a.key}|${p.b.key}|${p.mix}|${pointSig(p.a.focal)}|${lookSig(p.look)}`;
 
 function signatureOf(width: number, height: number, d: Drawn): string {
   let s = `${width}x${height}|${pictureSig(d)}`;
@@ -350,6 +402,7 @@ function signatureOf(width: number, height: number, d: Drawn): string {
     if (j.pupil) s += `|${pointSig(j.pupil)}`;
     if (j.photoRect) s += `|${j.photoRect.x},${j.photoRect.y},${j.photoRect.w},${j.photoRect.h}`;
   }
+  if (d.overlay) s += `|overlay ${d.overlay.opacity}@${d.overlay.source.version}`;
   return s;
 }
 
@@ -444,6 +497,8 @@ class WebGLCompositor implements Compositor {
   private programs: Partial<Record<ProgramName, Program>> = {};
   private buffer: WebGLBuffer | null = null;
   private textures = new Map<string, Texture>();
+  /** The overlay video's texture and the video frame version it holds. */
+  private mist: { texture: WebGLTexture; version: number } | null = null;
   private tick = 0;
   private last: Drawn | null = null;
   private signature = "";
@@ -487,6 +542,7 @@ class WebGLCompositor implements Compositor {
     event.preventDefault(); // ask for the context back
     this.lost = true;
     this.textures.clear();
+    this.mist = null;
     this.programs = {};
     this.last = null;
     this.signature = "";
@@ -546,6 +602,39 @@ class WebGLCompositor implements Compositor {
       this.textures.delete(victim);
     }
     return entry;
+  }
+
+  /**
+   * Make the overlay texture hold the video's current frame. False if it cannot (the video has no
+   * frame yet, or the upload is refused): the picture is then drawn without the overlay.
+   */
+  private uploadMist(overlay: OverlayScene): boolean {
+    const gl = this.gl;
+    const { video, version } = overlay.source;
+    if (this.mist && this.mist.version === version) return true;
+    let entry = this.mist;
+    if (!entry) {
+      const texture = gl.createTexture();
+      if (!texture) return false;
+      entry = { texture, version: -1 };
+    }
+    gl.activeTexture(gl.TEXTURE0 + MIST_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+    if (entry.version < 0) {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+    } catch {
+      if (!this.mist) gl.deleteTexture(entry.texture);
+      return false;
+    }
+    entry.version = version;
+    this.mist = entry;
+    return true;
   }
 
   /** Upload every layer of the scene; null if one failed (the caller keeps showing the last scene). */
@@ -608,13 +697,36 @@ class WebGLCompositor implements Compositor {
     const program = (geometry && this.programs[geometry.kind]) || plain;
     gl.useProgram(program.program);
     program.v2("uView", width, height);
+    program.f("uAspect", width / height);
+
+    // The overlay: its frame in a texture of its own, read through a cover fit of its own.
+    let mistOpacity = 0;
+    const overlay = drawn.overlay;
+    if (overlay && this.uploadMist(overlay)) {
+      mistOpacity = overlay.opacity;
+      const { video } = overlay.source;
+      const fit = coverFit(width, height, video.videoWidth, video.videoHeight, { x: 0.5, y: 0.5 });
+      program.v4("uMistFit", ...fitVec(fit));
+    }
+    program.f("uMistOpacity", mistOpacity);
+    program.i("uMistTex", MIST_UNIT);
+    if (mistOpacity > 0 && this.mist) {
+      gl.activeTexture(gl.TEXTURE0 + MIST_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, this.mist.texture);
+    }
+    const setVignette = (n: 0 | 1, look: PictureLook | null) => {
+      const v = look?.vignette;
+      program.v4(`uVig${n}`, v?.centre.x ?? 0.5, v?.centre.y ?? 0.5, (v?.inner ?? 0) ** 2, (v?.outer ?? 1) ** 2);
+      program.v4(`uVigCol${n}`, v?.color[0] ?? 0, v?.color[1] ?? 0, v?.color[2] ?? 0, v?.strength ?? 0);
+    };
+    setVignette(0, drawn.look);
 
     bind(0, drawn.a.key);
     bind(1, drawn.b.key);
     program.i("uFrameA0", 0);
     program.i("uFrameB0", 1);
     program.f("uMix0", drawn.mix);
-    const fitA = coverFit(width, height, drawn.a.width, drawn.a.height, drawn.a.focal);
+    const fitA = throughLook(coverFit(width, height, drawn.a.width, drawn.a.height, drawn.a.focal), drawn.look);
     program.v4("uFit0", ...fitVec(fitA));
 
     if (geometry && drawn.join) {
@@ -625,8 +737,12 @@ class WebGLCompositor implements Compositor {
       program.i("uFrameB1", 3);
       program.f("uMix1", into.mix);
       // The incoming frame's fit: the rect join composes it with the rectangle (joins.ts).
-      const fitB = geometry.kind === "rect" ? geometry.inFit : coverFit(width, height, into.a.width, into.a.height, into.a.focal);
+      const fitB = throughLook(
+        geometry.kind === "rect" ? geometry.inFit : coverFit(width, height, into.a.width, into.a.height, into.a.focal),
+        into.look,
+      );
       program.v4("uFit1", ...fitVec(fitB));
+      setVignette(1, into.look);
 
       switch (geometry.kind) {
         case "dissolve":
@@ -658,6 +774,7 @@ class WebGLCompositor implements Compositor {
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0);
     return true;
   }
 
@@ -673,10 +790,12 @@ class WebGLCompositor implements Compositor {
     const gl = this.gl;
     if (!gl.isContextLost()) {
       for (const t of this.textures.values()) gl.deleteTexture(t.texture);
+      if (this.mist) gl.deleteTexture(this.mist.texture);
       if (this.buffer) gl.deleteBuffer(this.buffer);
       for (const p of Object.values(this.programs)) p?.dispose();
     }
     this.textures.clear();
+    this.mist = null;
     this.programs = {};
     this.last = null;
     this.signature = "";
@@ -693,6 +812,17 @@ function composeFit(fit: Fit, scaleX: number, scaleY: number, offsetX: number, o
     offsetX: fit.offsetX + offsetX * fit.scaleX,
     offsetY: fit.offsetY + offsetY * fit.scaleY,
   };
+}
+
+/**
+ * The fit a picture is read through once its look's zoom and drift are applied: the picture is read at
+ * s' = s * (1 + term) - centre * term + (0, shift), which composes into the cover fit as plain affine
+ * numbers. A look at rest returns the fit itself, so the plain frame is untouched to the bit.
+ */
+function throughLook(fit: Fit, look: PictureLook | null | undefined): Fit {
+  if (!look || (look.term === 0 && look.shiftY === 0)) return fit;
+  const k = 1 + look.term;
+  return composeFit(fit, k, k, -look.centre.x * look.term, -look.centre.y * look.term + look.shiftY);
 }
 
 /** A zoom about a centre (0..1 screen) by the radial term 1/k - 1, as a screen map. */
@@ -729,10 +859,39 @@ class Canvas2DCompositor implements Compositor {
     this.ctx.drawImage(layer.image, -fit.offsetX * drawnW, -fit.offsetY * drawnH, drawnW, drawnH);
   }
 
-  /** A picture (its floor and ceil frames blended) through a fit, at an overall alpha. */
+  /** A picture (its floor and ceil frames blended, its look applied) through a fit, at an overall alpha. */
   private picture(p: Picture, fit: Fit, alpha = 1) {
-    this.layer(p.a, fit, alpha);
-    if (p.mix > 0 && p.b.key !== p.a.key) this.layer(p.b, fit, alpha * p.mix);
+    const look = p.look;
+    const through = throughLook(fit, look);
+    this.layer(p.a, through, alpha);
+    if (p.mix > 0 && p.b.key !== p.a.key) this.layer(p.b, through, alpha * p.mix);
+    const v = look?.vignette;
+    if (v && v.strength > 0) {
+      const { width, height } = this.canvas;
+      const cx = v.centre.x * width;
+      const cy = v.centre.y * height;
+      const rgb = v.color.map((c) => Math.round(c * 255)).join(",");
+      const gradient = this.ctx.createRadialGradient(cx, cy, v.inner * height, cx, cy, v.outer * height);
+      gradient.addColorStop(0, `rgba(${rgb},0)`);
+      gradient.addColorStop(1, `rgba(${rgb},${v.strength})`);
+      this.ctx.globalAlpha = alpha;
+      this.ctx.fillStyle = gradient;
+      this.ctx.fillRect(0, 0, width, height);
+    }
+  }
+
+  /** The overlay video over the finished picture, with the screen blend. */
+  private overlay(overlay: OverlayScene) {
+    const { video } = overlay.source;
+    const { width, height } = this.canvas;
+    if (video.videoWidth === 0) return;
+    const fit = coverFit(width, height, video.videoWidth, video.videoHeight, { x: 0.5, y: 0.5 });
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = overlay.opacity;
+    ctx.drawImage(video, (-fit.offsetX * width) / fit.scaleX, (-fit.offsetY * height) / fit.scaleY, width / fit.scaleX, height / fit.scaleY);
+    ctx.restore();
   }
 
   draw(scene: Scene | null): boolean {
@@ -792,6 +951,7 @@ class Canvas2DCompositor implements Compositor {
           }
         }
       }
+      if (drawn.overlay) this.overlay(drawn.overlay);
     } catch {
       return this.signature !== "";
     } finally {

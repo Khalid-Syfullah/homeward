@@ -47,6 +47,38 @@ export interface Caption {
   line: string;
 }
 
+/** A vignette state; inner and outer are distances from its centre in viewport heights. */
+export interface VignetteState {
+  /** 0 (none) to 1 (the vignette colour at full strength outside the outer radius). */
+  strength: number;
+  /** Clear inside this distance. */
+  inner: number;
+  /** Full strength beyond this distance. */
+  outer: number;
+}
+
+/**
+ * How a chapter's picture is treated on top of its frames (src/stage/looks.ts). Everything here is
+ * a function of the chapter's local time t (0..1), except the breath, which also follows the clock.
+ * Every look is exactly the plain frame where its terms are zero, and none of it moves under
+ * reduced motion.
+ */
+export interface Look {
+  /** Zoom across the chapter (1 = none), linear in the chapter's local time. */
+  scale?: { from: number; to: number };
+  /** Vertical drift across the chapter in CSS pixels (negative moves the picture up). */
+  driftPx?: { from: number; to: number };
+  /** Breathing while the page rests: scale 1 to 1 + amplitude on a sine of the clock. */
+  breath?: { amplitude: number; periodS: number };
+  /** The point scale and breath zoom about: the middle of the frame, or the pupil anchor. */
+  zoomAbout?: "centre" | "pupil";
+  /** A vignette that moves from one state to the other across the chapter. */
+  vignette?: { color: PaletteName; toward: "centre" | "pupil"; from: VignetteState; to: VignetteState };
+}
+
+/** Looping video overlays, blended over the whole picture (art/source/overlays/<name>.mp4). */
+export type OverlayName = "mist";
+
 export interface Chapter {
   /** Chapter id, which is also the clip id and the folder under public/frames/. */
   id: string;
@@ -75,6 +107,10 @@ export interface Chapter {
   anchors: Anchors;
   focal: Focal;
   caption: Caption;
+  /** Per-chapter treatment of the picture (breathing, drift, vignette). */
+  look?: Look;
+  /** A video overlay shown over this chapter; the chapters that share one share its opacity ramp (tune.overlays). */
+  overlay?: OverlayName;
   /** Ambience loop id: public/audio/<ambience>.m4a (and .ogg). */
   ambience: string;
 }
@@ -158,6 +194,41 @@ export const tune = {
   defaultFocal: { x: 0.5, y: 0.5 },
   defaultPupil: { x: 0.5, y: 0.5 },
   defaultPhotoRect: { x: 0.2, y: 0.2, w: 0.6, h: 0.45 },
+  /** Per-chapter looks (src/stage/looks.ts). */
+  look: {
+    /** Breathing is full strength below this scroll speed, in viewport heights per second... */
+    breathCalmVh: 1,
+    /** ...and gone at this speed and above (smoothstep between). */
+    breathStillVh: 24,
+  },
+  /**
+   * Video overlays: the file under /overlays/ (copied from art/source/overlays/ by npm run overlays),
+   * the opacity at the start and end of the chapters that share the overlay (linear in scroll), and how
+   * it is blended. The opacity eases in over the join into the first of those chapters and out over the join
+   * after the last one when its end opacity is not zero. A missing file is skipped silently.
+   */
+  overlays: {
+    mist: { file: "mist.mp4", from: 0.35, to: 0, blend: "screen" },
+  },
+  /**
+   * Captions (src/stage/captionTiming.ts). A chapter's caption shows only inside its window: it fades in
+   * enterVh after the previous join window ends (or the chapter starts) over enterFadeVh, and is
+   * gone, fading over exitFadeVh, exitVh before its own join window starts, so it never overlaps a
+   * join. On top of that the picture must have settled: scrolling slower than settleVhPerS for
+   * settleMs. The caption then eases in over fadeInMs, and leaves over fadeOutMs when scrolling resumes.
+   */
+  captions: {
+    settleVhPerS: 8,
+    settleMs: 200,
+    fadeInMs: 600,
+    fadeOutMs: 240,
+    enterVh: 3,
+    enterFadeVh: 6,
+    exitVh: 2,
+    exitFadeVh: 6,
+    /** Rise of the caption while it fades in, in CSS pixels (none under reduced motion). */
+    risePx: 10,
+  },
   /**
    * The three joins (src/stage/joins.ts). Every join is a pure function of its time t (0..1 over
    * the join window) and is exactly the outgoing picture at t = 0 and the incoming one at t = 1;
@@ -217,6 +288,17 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The road", line: "Some journeys begin with nothing but a road." },
+    look: {
+      scale: { from: 1, to: 1.03 },
+      driftPx: { from: 0, to: -12 },
+      // Warm and loose at first, closing in as the face arrives.
+      vignette: {
+        color: "teak",
+        toward: "centre",
+        from: { strength: 0.22, inner: 0.8, outer: 1.5 },
+        to: { strength: 0.5, inner: 0.42, outer: 1.0 },
+      },
+    },
     ambience: "c01",
   },
   {
@@ -231,6 +313,17 @@ export const chapters: readonly Chapter[] = [
     anchors: { pupil: { ...tune.defaultPupil } },
     focal: centre,
     caption: { title: "The eye", line: "Look closer." },
+    look: {
+      breath: { amplitude: 0.01, periodS: 6 },
+      zoomAbout: "pupil",
+      // Dark, closing toward the pupil anchor so the portal opens out of the dark.
+      vignette: {
+        color: "ink",
+        toward: "pupil",
+        from: { strength: 0.25, inner: 0.95, outer: 1.7 },
+        to: { strength: 0.9, inner: 0.08, outer: 0.6 },
+      },
+    },
     ambience: "c02",
   },
   {
@@ -245,6 +338,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The valley", line: "Everything you carry comes from somewhere." },
+    overlay: "mist",
     ambience: "c03",
   },
   {
@@ -258,6 +352,7 @@ export const chapters: readonly Chapter[] = [
     anchors: {},
     focal: centre,
     caption: { title: "The way down", line: "One house waits at the end of the path." },
+    overlay: "mist",
     ambience: "c04",
   },
   {
@@ -534,6 +629,11 @@ export function joinAt(p: number, s: Story = story): { window: JoinWindow; t: nu
 /** Frame folder of a clip at a tier, e.g. /frames/c01-follow/1440. */
 export function framePath(clip: string, tier: number, index: number): string {
   return `/frames/${clip}/${tier}/f_${String(index + 1).padStart(3, "0")}.webp`;
+}
+
+/** Where an overlay video is served from (copied from art/source/overlays/ by npm run overlays). */
+export function overlayPath(name: OverlayName): string {
+  return `/overlays/${tune.overlays[name].file}`;
 }
 
 export function manifestPath(clip: string): string {
