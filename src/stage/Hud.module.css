@@ -1,0 +1,64 @@
+.hud {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 100;
+  max-width: min(46rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  overflow: auto;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  color: var(--c-paper);
+  background: color-mix(in srgb, var(--c-ink) 86%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.readout,
+.tune {
+  margin: 0;
+  white-space: pre;
+}
+
+.section {
+  margin-top: 0.5rem;
+}
+
+.section summary {
+  cursor: pointer;
+  color: var(--c-brass);
+}
+
+.table {
+  margin-top: 0.3rem;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 0.05rem 0.6rem 0.05rem 0;
+  text-align: left;
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--c-sky);
+}
+
+.table tr[data-current] td {
+  color: var(--c-ink);
+  background: var(--c-brass);
+}
+
+.note {
+  margin: 0.3rem 0 0;
+  color: var(--c-sky);
+}
+
+@media (max-width: 768px) {
+  .hud {
+    font-size: 9px;
+  }
+}

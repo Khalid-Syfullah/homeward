@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { chapters, manifestPath, resolveStory, site } from "@/content/story";
-import { StagePreview } from "./StagePreview";
+import { chapters, endScreenT, manifestPath, resolveStory, site } from "@/content/story";
+import { Stage } from "./Stage";
+import { useStageFrame } from "./useStage";
 import styles from "./Film.module.css";
 
 interface FilmProps {
@@ -15,7 +16,6 @@ interface FilmProps {
  * sticky full-viewport stage. Everything inside the stage reads the same progress p.
  */
 export function Film({ initialMissing }: FilmProps) {
-  const endRef = useRef<HTMLElement>(null);
   const [missing, setMissing] = useState<string[]>(initialMissing);
   const story = useMemo(() => resolveStory((clip) => !missing.includes(clip)), [missing]);
 
@@ -40,12 +40,24 @@ export function Film({ initialMissing }: FilmProps) {
   return (
     <main className={styles.track} style={{ height: `calc(${story.totalVh}vh + 100vh)` }}>
       <div className={styles.stage}>
-        <StagePreview story={story} endScreenRef={endRef} />
-        <section ref={endRef} className={styles.end} aria-label="End">
-          <h1 className={styles.endHeading}>{site.end.heading}</h1>
-          <p className={styles.endLine}>{site.end.line}</p>
-        </section>
+        <Stage story={story}>
+          <EndScreen />
+        </Stage>
       </div>
     </main>
+  );
+}
+
+/** The end screen after the last frame; its opacity follows p through the end screen's scroll. */
+function EndScreen() {
+  const ref = useRef<HTMLElement>(null);
+  useStageFrame((f) => {
+    if (ref.current) ref.current.style.opacity = String(endScreenT(f.p, f.story));
+  });
+  return (
+    <section ref={ref} className={styles.end} aria-label="End">
+      <h1 className={styles.endHeading}>{site.end.heading}</h1>
+      <p className={styles.endLine}>{site.end.line}</p>
+    </section>
   );
 }

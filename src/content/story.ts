@@ -115,15 +115,53 @@ export const tune = {
   dprCapPhone: 1.5,
   /** Aspect ratio of every frame (16:9). */
   frameAspect: 16 / 9,
-  /** Chapters loaded ahead of the current one. */
+  /** Chapters loaded ahead of the current one, in the direction of travel. */
   lookaheadChapters: 2,
-  /** Frame cache memory cap, in MB. */
+  /** Chapters kept loaded behind the current one (for scrubbing back and the join behind). */
+  behindChapters: 1,
+  /** Frames behind the direction of travel count this much further away when ordering loads. */
+  behindBias: 1.5,
+  /** Decoded frame (ImageBitmap) memory cap, in MB (1 MB = 1024 * 1024 bytes). ?mem=<MB> overrides. */
   memoryCapMb: 160,
+  /** Encoded frame bytes kept in memory, so an evicted frame decodes again without the network, in MB. */
+  blobCapMb: 48,
+  /** Rough encoded size of one frame per tier, in KB, used until the real size is known. */
+  frameKb: { 1440: 90, 768: 35 },
+  /** Frame fetches and frame decodes running at once. */
+  maxFetches: 6,
+  maxDecodes: 4,
+  /** A failed frame or manifest load is tried again after this long (doubling each time), in ms... */
+  retryMs: 3000,
+  /** ...at most this many times. */
+  maxRetries: 4,
+  /** The 768 tier is used at or below this navigator.deviceMemory, in GB. */
+  lowMemoryGb: 4,
+  /** ...and when the memory cap holds fewer than this many frames of the widest tier. */
+  minDecodedFrames: 24,
+  /** navigator.connection.effectiveType values that get the 768 tier (as does saveData). */
+  slowConnections: ["slow-2g", "2g", "3g"],
+  /** Development only: manifests are read again when the tab regains focus, at most this often, in ms. */
+  manifestRecheckMs: 2000,
+  /** GPU textures kept for recently drawn frames. */
+  textureCache: 6,
+  /** Scroll clock: angular frequency of the critically damped spring that follows the scroll, in 1/s. */
+  clockOmega: 9,
+  /** The clock settles (and the render loop idles) once this close to the scroll, in p... */
+  clockRestP: 0.00001,
+  /** ...and this slow, in p per second. */
+  clockRestVelocity: 0.0001,
+  /** Longest step the clock integrates at once, in seconds (after a stall or a hidden tab). */
+  clockMaxDt: 0.25,
+  /** A scroll jump larger than this (in p) in one frame is a navigation, not a scrub: the clock snaps. */
+  clockSnapJump: 0.2,
   /** Default focal point and anchors, in 0..1 frame coordinates. */
   defaultFocal: { x: 0.5, y: 0.5 },
   defaultPupil: { x: 0.5, y: 0.5 },
   defaultPhotoRect: { x: 0.2, y: 0.2, w: 0.6, h: 0.45 },
 } as const;
+
+/** A frame tier: the width in pixels of one stored frame set (public/frames/<clip>/<tier>/). */
+export type Tier = (typeof tune.tiers)[number];
 
 const centre: Focal = { desktop: { ...tune.defaultFocal }, phone: { ...tune.defaultFocal } };
 
